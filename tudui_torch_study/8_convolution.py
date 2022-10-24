@@ -42,8 +42,7 @@ def conv2d_layer() -> None:
     """
     CIFAR10_datasets = torchvision.datasets.CIFAR10("./torch_datasets", False, transform=transforms.ToTensor(), download=True)
     # 生成DataLoader
-    CIFAR10_dataloader = DataLoader(CIFAR10_datasets, 64, True, num_workers=4)
-
+    CIFAR10_dataloader = DataLoader(CIFAR10_datasets, 64, True, num_workers=4) # 使用四个进程去读入。
 
 
     # 然后我们就可以遍历这个. datalloader
