@@ -1,3 +1,5 @@
 CIFAR10_data
 hymenoptera_data
 torch_datasets
+logs
+log

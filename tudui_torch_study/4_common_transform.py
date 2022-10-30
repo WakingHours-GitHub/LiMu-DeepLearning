@@ -29,8 +29,6 @@ __call__: 函数: 就是将实例当作函数时候调用的方法.
 
         老版本只能使用Image对象, 新版本可以使用Tensor类型和Image类型.
         返回值就是输入类型, 如果输入Image, 返回就是Image, 如果输入Tensor同理, 返回Tensor
-
-    
     6. RandomCrop()
         随机裁剪, 给定size, 进行裁剪. 最终返回结果.
 

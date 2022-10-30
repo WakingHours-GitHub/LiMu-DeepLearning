@@ -82,6 +82,7 @@ from torch import nn
 
 
 
+# 创建一个块的方式. 
 class TestModule(nn.Module): # 继承父类的Module
     """我们可以直接alt+insert进行快速重写父类方法."""
 
