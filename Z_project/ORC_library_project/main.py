@@ -235,7 +235,7 @@ def test():
     print(choice_file_path_list)
 
     _, figs = plt.subplots(2, 4, figsize=(16, 9))
-    figs = figs.flatten()
+    figs = figs.flatten() # 需要平坦.
     
 
     for idx, (f, file_path) in enumerate(zip(figs, choice_file_path_list)):
