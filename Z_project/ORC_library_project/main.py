@@ -17,7 +17,7 @@ writer = SummaryWriter("./logs")
 
 
 EPOCH = 200
-BATCH_SIZE = 32
+BATCH_SIZE = 128
 NUM_WORKERS = 4
 LR = 0.05
 # device = torch.cuda.device("cuda:0" if torch.cuda.is_available() else "CPU")
@@ -66,13 +66,14 @@ class OCR_netword(nn.Module):
             padding=1,
             stride=1,
         )
+        self.relu1 = nn.ReLU()
+
         self.pool1 = nn.MaxPool2d(
             kernel_size=(3, 3), 
             stride=1,
             padding=1,
             ceil_mode=True,
         )
-        self.relu1 = nn.ReLU()
         
         self.conv2=nn.Conv2d(
             in_channels=4,
@@ -81,13 +82,14 @@ class OCR_netword(nn.Module):
             padding=1,
             stride=2,
         )
+        self.relu2 = nn.ReLU()
+
         self.pool2 = nn.MaxPool2d(
             kernel_size=(3, 3), 
             stride=1,
             padding=1,
             ceil_mode=True,
         )
-        self.relu2 = nn.ReLU()
 
         self.flatten = nn.Flatten()
         self.linear1 = nn.Linear(8*25*65, 1024)
@@ -98,11 +100,11 @@ class OCR_netword(nn.Module):
     def forward(self, X):
         # X: torch.Size([64, 1, 50, 130])
         X = self.conv1(X)
-        X = self.pool1(X)
         X = self.relu1(X)
+        X = self.pool1(X)
         X = self.conv2(X)
-        X = self.pool2(X)
         X = self.relu2(X)
+        X = self.pool2(X)
         
 
         X = self.flatten(X)
@@ -293,17 +295,11 @@ def inference(image):
 
 
 
-    
-
-
-
-
-
 
 
 if __name__ == "__main__":
-    # train()
-    test()
+    train(is_load=False)
+    # test()
     pass
 
 
