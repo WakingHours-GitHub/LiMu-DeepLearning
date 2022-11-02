@@ -190,6 +190,7 @@ def train(is_load=True) -> None:
     trainer = torch.optim.SGD(net.parameters(), lr=LR)
 
     for epoch in range(EPOCH):
+        net.train() # start train mode
         for idx, (images, labels) in enumerate(image_dataloader):
             # writer.add_images("source image", images, idx)
 
@@ -201,7 +202,7 @@ def train(is_load=True) -> None:
             # print(y_hat.shape)
             # print(labels.shape) # torch.Size([64, 4, 10])
 
-            trainer.zero_grad() # empty gradient. because will accumulate gradient in pytoch.
+            trainer.zero_grad() # empty gradient. because gradient will be accumulateb in pytoch.
             loss = loss_function(y_hat, labels)
             loss.backward()
             trainer.step() # 更新参数.
@@ -211,7 +212,7 @@ def train(is_load=True) -> None:
         accuracy = calculate_accuracy(y_hat, labels)
         print(f"epoch: {epoch}: loss: {loss_value.item()}, accuracy: {accuracy.item()}")
 
-        torch.save(net.state_dict(), "./OCR_parameters.net")
+        torch.save(net.state_dict(), "./OCR_parameters.net") # save net parameter dict. 
 
 
             
@@ -237,7 +238,7 @@ def test():
     print(choice_file_path_list)
 
     _, figs = plt.subplots(2, 4, figsize=(16, 9))
-    figs = figs.flatten() # 需要平坦.
+    figs = figs.flatten() # need flatten, notice!, of else, can't traverse. 
     
 
     for idx, (f, file_path) in enumerate(zip(figs, choice_file_path_list)):
@@ -276,7 +277,7 @@ def inference(image):
     # 开始推理: 
     net = OCR_netword()
     net.load_state_dict(torch.load("./OCR_parameters.net"))
-    net.eval() #  进行评估模式
+    net.eval() #  start evaluation mode
     net = net.to(device)
 
     y_hat = net(image)
@@ -298,7 +299,7 @@ def inference(image):
 
 
 if __name__ == "__main__":
-    train(is_load=False)
+    train(is_load=True)
     # test()
     pass
 
