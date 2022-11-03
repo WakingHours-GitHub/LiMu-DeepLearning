@@ -20,9 +20,19 @@ import torch
 from torchvision import transforms
 from torch.utils.tensorboard import SummaryWriter
 from torch import nn 
-nn.CrossEntropyLoss()
 
-class MyNN(nn.Module):
+# 搭建一个简单的神经网络模型: VGG16
+class MyNN(nn.Module): 
+    def __init__(self) -> None:
+        super().__init__()
+        # 输入图像, 使用CIFAR10: x: [batch, 3, 32, 32]
+        self.conv1 = nn.Conv2d(
+            in_channels=3,
+            out_channels=32,
+            kernel_size=5,
+            stride=1,
+            padding=2, # 2*p = k-1所以, 该层不会改变输入图像大小. 
+        )
 
 
 
