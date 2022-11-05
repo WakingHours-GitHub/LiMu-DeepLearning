@@ -10,16 +10,19 @@ import torchvision
 from torchvision import transforms
 from torch.utils.tensorboard import SummaryWriter
 from torch import ceil, dtype, ne, nn
+import sys
+runtime_path = sys.path[0]
 
 
-writer = SummaryWriter("./logs")
+
+writer = SummaryWriter(os.path.join(runtime_path, "logs"))
 
 
 
 EPOCH = 200
-BATCH_SIZE = 128
-NUM_WORKERS = 4
-LR = 0.05
+BATCH_SIZE = 64
+NUM_WORKERS = 8
+LR = 0.1
 # device = torch.cuda.device("cuda:0" if torch.cuda.is_available() else "CPU")
 device = torch.device("cuda:0")
 # print(device)
@@ -27,7 +30,7 @@ device = torch.device("cuda:0")
 
 class ImageDataset(Dataset):
     def __init__(self, train=True, transforms=None, target_transfoms=None):
-        self.root = "./image_data"
+        self.root = os.path.join(runtime_path, "image_data")
         self.train = True
         self.transforms = transforms
         self.target_transfoms = target_transfoms
@@ -62,7 +65,7 @@ class OCR_netword(nn.Module):
         self.conv1=nn.Conv2d(
             in_channels=1,
             out_channels=4,
-            kernel_size=3,
+            kernel_size=7,
             padding=1,
             stride=1,
         )
@@ -78,7 +81,7 @@ class OCR_netword(nn.Module):
         self.conv2=nn.Conv2d(
             in_channels=4,
             out_channels=8,
-            kernel_size=3,
+            kernel_size=5,
             padding=1,
             stride=2,
         )
@@ -86,14 +89,18 @@ class OCR_netword(nn.Module):
 
         self.pool2 = nn.MaxPool2d(
             kernel_size=(3, 3), 
-            stride=1,
+            stride=2,
             padding=1,
             ceil_mode=True,
         )
 
         self.flatten = nn.Flatten()
-        self.linear1 = nn.Linear(8*25*65, 1024)
-        self.finally_full_connection_layer = nn.Linear(1024, 40)
+        self.linear1 = nn.Linear(8*12*32, 1024)
+        self.dropout1 = nn.Dropout(0.4)
+
+        self.linear2 = nn.Linear(1024, 512)
+    
+        self.finally_full_connection_layer = nn.Linear(512, 40)
         self.softmax = nn.Softmax(dim=-1)
 
 
@@ -109,12 +116,28 @@ class OCR_netword(nn.Module):
 
         X = self.flatten(X)
         X = self.linear1(X)
+        X = self.dropout1(X)
+        X = self.linear2(X)
         X = self.finally_full_connection_layer(X)
 
         # 神经网络输出结束. 然后我们应该对后续的一些形状进行处理,.
         X = X.reshape((-1, 4, 10))
         X = self.softmax(X) # 输出概率. 
         return X
+
+
+def display_layer_output_shape(X, net):
+    assert isinstance(X, torch.Tensor)
+    assert X.dim() == 4
+    print(f"source image shape: {X.shape}")
+
+    for layer in net._modules.values():
+        X = layer(X) # 做运算
+        print(f"{layer.__class__.__name__:10.8}: {X.shape}")
+        
+        
+    
+
 
 
 def convert_to_one_hot(Y, C):
@@ -183,7 +206,7 @@ def train(is_load=True) -> None:
 
     net = OCR_netword()
     if is_load:
-        net.load_state_dict(torch.load("./OCR_parameters.net"))
+        net.load_state_dict(torch.load(os.path.join(runtime_path, "OCR_parameters.net")))
     net = net.to(device)
 
 
@@ -194,8 +217,8 @@ def train(is_load=True) -> None:
         for idx, (images, labels) in enumerate(image_dataloader):
             # writer.add_images("source image", images, idx)
 
-            images = images.cuda(0)
-            labels = labels.cuda(0)
+            images = images.to(device)
+            labels = labels.to(device)
 
             y_hat = net(images)
 
@@ -212,7 +235,7 @@ def train(is_load=True) -> None:
         accuracy = calculate_accuracy(y_hat, labels)
         print(f"epoch: {epoch}: loss: {loss_value.item()}, accuracy: {accuracy.item()}")
 
-        torch.save(net.state_dict(), "./OCR_parameters.net") # save net parameter dict. 
+        torch.save(net.state_dict(), os.path.join(runtime_path, "OCR_parameters.net")) # save net parameter dict. 
 
 
             
@@ -227,7 +250,7 @@ def train(is_load=True) -> None:
 
 def test():
     
-    root = "./image_data/train"
+    root = os.path.join(runtime_path, "image_data/train")
     file_name_list = os.listdir(root)
     file_full_path_list = [os.path.join(root, filename) for filename in file_name_list]
 
@@ -300,6 +323,9 @@ def inference(image):
 
 if __name__ == "__main__":
     train(is_load=True)
+    print(OCR_netword())
+    x = torch.rand(size=(1, 1, 50, 130))
+    display_layer_output_shape(x, OCR_netword())
     # test()
     pass
 
