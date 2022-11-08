@@ -184,7 +184,7 @@ def main(is_load=True) -> None:
             optim.step()
 
 
-        # 每一轮保存一下: 
+        # 每一轮保存一下: 模型参数
         torch.save(net.state_dict(), runtime_path+"/14_net_dict.net")
         
 
@@ -201,11 +201,6 @@ def main(is_load=True) -> None:
         
         accuracy = calculate_accuracy(y_hat_test, labels_test)
         print(f"epoch: {epoth}, loss: {current_loss.item()}, accuracy: {accuracy.item()} ", )
-    
-
-
-
-    
     
 
 
