@@ -37,7 +37,7 @@ def modify_vgg16_to_10_classes() -> None:
     print(vgg16_false) 
     # 替换: 
     # 我们可以将Seqential看成一个列表(容器), 然后我们就可以通过索引来得到对应索引处的引用, 然后指向我们新的网络模型. 
-    vgg16_false_replace = vgg16_false.classifier[-1] = nn.Linear(1000, 40)
+    vgg16_false_replace = vgg16_false.classifier[-1] = nn.Linear(1000, 40) # 直接修改. 
     print(vgg16_false_replace)
 
 
