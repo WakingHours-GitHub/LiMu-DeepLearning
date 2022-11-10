@@ -11,6 +11,9 @@ from torchvision import transforms
 from torch.utils.tensorboard import SummaryWriter
 from torch import ceil, dtype, ne, nn
 import sys
+
+
+
 runtime_path = sys.path[0]
 
 
@@ -59,7 +62,21 @@ class ImageDataset(Dataset):
 
 
 
-class OCR_netword(nn.Module):
+
+class OCR_Network_black_network(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def get_Conv2D_block(in_channel, out_channel):
+        nn.Sequential(
+            nn.Conv2d(in_channel, out_channel, 3, 1, 1),
+            nn.BatchNorm2d(out_channel), # 特征设置为通道数
+            
+        )
+
+        
+
+class OCR_network_based_AlexNet(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.conv1=nn.Conv2d(
@@ -204,7 +221,7 @@ def train(is_load=True) -> None:
         drop_last=True, # 丢掉最后一个batch.
     )
 
-    net = OCR_netword()
+    net = OCR_netword_based_AlexNet()
     if is_load:
         net.load_state_dict(torch.load(os.path.join(runtime_path, "OCR_parameters.net")))
     net = net.to(device)
@@ -298,7 +315,7 @@ def inference(image):
 
 
     # 开始推理: 
-    net = OCR_netword()
+    net = OCR_netword_based_AlexNet()
     net.load_state_dict(torch.load("./OCR_parameters.net"))
     net.eval() #  start evaluation mode
     net = net.to(device)
@@ -323,9 +340,9 @@ def inference(image):
 
 if __name__ == "__main__":
     train(is_load=True)
-    print(OCR_netword())
+    print(OCR_network_based_AlexNet())
     x = torch.rand(size=(1, 1, 50, 130))
-    display_layer_output_shape(x, OCR_netword())
+    display_layer_output_shape(x, OCR_network_based_AlexNet())
     # test()
     pass
 
