@@ -28,13 +28,13 @@ import torch
 import torchvision
 
 
-
+# 使用
 def load_save_method2():
     vgg_net = torchvision.models.vgg16(pretrained=False)
     # 就是将模型加载进来的模型参数直接load进来为dict格式, 然后通过Module.load_state_dict()进行
     net_dict = torch.load("./16_module_save/vgg16_method2.pth")
     print(net_dict) # 打印参数字典。 OrderDict type
-    vgg_net.load_state_dict(torch.load("./16_module_save/vgg16_method2.pth"))
+    vgg_net.load_state_dict(torch.load("./16_module_save/vgg16_method2.pth")) 
 
 
 
@@ -47,7 +47,7 @@ def save_method2():
     """
     vgg16 = torchvision.models.vgg16(pretrained=False) # 不加载预训练模型
     torch.save(vgg16.state_dict(), "16_module_save/vgg16_method2.pth")
-    
+
 
 
 def load_save_method1():
