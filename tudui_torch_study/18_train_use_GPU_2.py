@@ -11,6 +11,10 @@ google colab, 提供了免费的GPU供我们使用. 基于Jupyter Notebook.
     .to(device)
     device = torch.device(name)
     name: cuda:0, cpu...
+    对于单卡来说: cuda和cuda:0没有区别. 
+
+tips: 
+    模型, 损失函数, 直接原地操作. 不需要额外赋值, 只有我们的数据需要额外赋值. 
 
 
 
@@ -28,6 +32,7 @@ from torch import nn
 from tqdm import tqdm, trange
 
 BATCH_SIZE = 64
+# 定义设备: to. 常见的设备定义语句: 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 EPOCH = 60
 
@@ -123,9 +128,8 @@ def calculate_accuracy(y_hat, labels) -> float:
 
 def train():
     net = CIFAR10_net_baed_VGG()
-    # net.to(device)
-    net = net.cuda()
-    loss_fu =nn.CrossEntropyLoss().cuda()
+    net.to(device)
+    loss_fu =nn.CrossEntropyLoss().to(device)
 
     optimizer = torch.optim.SGD(net.parameters(), lr=0.01)
     # 优化器没有.cuda()方法
@@ -144,7 +148,7 @@ def train():
         # batch
         for batch_index, (inputs, labels) in enumerate(train_dataloader):
             # 数据: .cuda()
-            inputs, labels = inputs.cuda(), labels.cuda()
+            inputs, labels = inputs.to(device), labels.to(device)
             y_hat = net(inputs)
 
             loss = loss_fu(y_hat, labels)
@@ -169,7 +173,7 @@ def train():
             test_mean_accuracy = 0 # 测试集平均测试.
             # inputs, labels = iter(test_dataloader).__next__() # 只看一个batch的test的精度。 
             for inputs, labels in test_dataloader:
-                inputs, labels = inputs.cuda(), labels.cuda()
+                inputs, labels = inputs.to(device), labels.to(device)
 
                 y_hat = net(inputs)
                 
