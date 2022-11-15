@@ -74,6 +74,21 @@ class OCR_Network_black_network(nn.Module):
             
         )
 
+class OCR_Network_Network_based_on_ResNet(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def get_res_block(in_channel, out_channel):
+        nn.Sequential(
+            nn.Conv2d(in_channel, out_channel, 3, 1, 1),
+            nn.BatchNorm2d(out_channel), # 特征设置为通道数
+            nn.ReLU(),
+            nn.Conv2d(out_channel, out_channel, 3, 1, 1),
+            nn.BatchNorm2d(out_channel)
+        )
+        
+
+
         
 
 class OCR_network_based_AlexNet(nn.Module):
