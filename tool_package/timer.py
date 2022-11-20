@@ -15,6 +15,6 @@ class Timer:
     def stop(self) -> float:
         self.times.append(time.time() - self.tik)
         return self.times[-1] # return time, that now add
-
-
-    
+        
+    def sum(self) -> float:
+        return sum(self.times)
