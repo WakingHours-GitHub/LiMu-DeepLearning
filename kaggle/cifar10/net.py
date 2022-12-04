@@ -10,11 +10,13 @@ class Residual(nn.Module):
         self.conv1 = nn.Conv2d(in_channels, out_channels, 3, stride=stride, padding=1)
         self.bn1 = nn.BatchNorm2d(out_channels)
         
-        self.conv2 = nn.Conv2d(out_channels, out_channels, 3) 
-        self.bn2 = nn.BatchNorm2(out_channels)
-
+        self.conv2 = nn.Conv2d(out_channels, out_channels, 3, padding=1) 
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        
         if is_use1x1Conv:
-            self.conv3 = nn.Conv2d(in_channels, out_channels, 1, padding=0)
+            self.conv3 = nn.Conv2d(in_channels, out_channels, 1, padding=0, stride=stride)
+        else:
+            self.conv3 = None
         
 
     def forward(self, X):
@@ -23,7 +25,8 @@ class Residual(nn.Module):
 
         if self.conv3:
             X = self.conv3(X)
-        
+
+
         Y += X
         
         return F.relu(Y)
@@ -35,7 +38,7 @@ def res_stage(in_channels, out_channels, num_residuals, is_first=False):
         if i == 0 and not is_first: # 第一个stage不做高宽减半. 
             block.append(Residual(in_channels, out_channels, True, 2))
         else: 
-            block.append(Residual(in_channels, out_channels))
+            block.append(Residual(out_channels, out_channels)) # 后面之后就不进行通道的增加了。
     
     return block
 
@@ -44,13 +47,13 @@ def res_stage(in_channels, out_channels, num_residuals, is_first=False):
 class resnet18(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        
-        self.conv1 = nn.Conv2d(3,  64, kernel_size=7, padding=3, stride=2)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.maxpool1 = nn.MaxPool2d(3, stride=1, padding=1)
+    
 
         self.stage1 = nn.Sequential(
-            self.conv1,self.bn1,self.maxpool1
+            nn.Conv2d(3,  64, kernel_size=7, padding=3, stride=2),
+            nn.BatchNorm2d(64),
+            nn.MaxPool2d(3, stride=1, padding=1),
+            
         )
 
         self.stage2 = nn.Sequential(*res_stage(64, 64, 2, is_first=True)) # 第一个不做高宽减半. 
@@ -62,7 +65,7 @@ class resnet18(nn.Module):
         self.flatten = nn.Flatten()
         self.linear = nn.Linear(512, 10)
 
-    def forwars(self, X):
+    def forward(self, X):
         X = self.stage1(X)
         X = self.stage2(X)
         X = self.stage3(X)
@@ -74,4 +77,15 @@ class resnet18(nn.Module):
         return X
         
 
-        
+    def test(self):
+        X = torch.rand(size=(1, 3, 32, 32))
+        # X = self(X)
+        # print(X.shape)
+
+        for layer in self._modules:
+            X = eval("self."+layer)(X)
+            print(layer, X.shape)
+    
+
+
+
