@@ -13,8 +13,7 @@ from typing import List
 
 def try_all_gpus() -> List[torch.device]:
     devices = []
-    devices.extend([torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())])
-
+    # devices.extend([torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())])
     return devices if devices else "CPU"
 
 # print(try_all_gpus())
@@ -26,8 +25,63 @@ def train(net: nn.Module, loss, optim: optim, lr, weight_decay, num_eopchs, batc
 
 
 
-def train_cifar10(net):
+
+
+
+def evaluate_test_with_GPUS(net: nn.Module, test_iter):
+    if isinstance(net, nn.Module):
+        net.eval() # set module on evaluation mode
+
+    device = next(iter(net.parameters())).device # 拿出来一个参数
+    matrix = Accumulator(2)
+    with torch.no_grad():
+        for X,  label in test_iter:
+            X, label = X.to(device), label.to(device)
+            matrix.add(accuracy(net(X), label), 1)
+    return matrix[0] / matrix[1]
     
+        
+        
+
+
+    pass
+
+def accuracy(y_hat:torch.Tensor, label:torch.Tensor):
+    # print(y_hat.argmax(dim=1).shape)
+    # print(label.shape)
+    print((y_hat.argmax(dim=1) == label).float().mean())
+    return (y_hat.argmax(dim=1) == label).float().mean()
+
+
+
+
+def train_cifar10(net, lr, num_epochs, train_iter, test_iter, device):
+    net = net.to(device)
+    loss_fn = torch.nn.CrossEntropyLoss().to(device)
+    optim = torch.optim.SGD(net.parameters(), lr=lr, weight_decay=1e-4)
+
+    for epoch in range(num_epochs):
+        net.train()
+        for X, label in train_iter:
+            X, label = X.to(device), label.to(device)
+            y = net(X)
+            loss = loss_fn(y, label)
+            optim.zero_grad()
+            loss.sum().backward()
+            optim.step()
+
+        print(evaluate_test_with_GPUS(net, test_iter))
+        print(accuracy(y, label))
+        
+
+        
+        
+
+
+        print(loss)
+
+    
+
 
 
 
@@ -49,6 +103,36 @@ def load_data_CIFAR10(batch_size, num_workers=4):
         DataLoader(test_datasets, batch_size, True, num_workers=num_workers, drop_last=False)
 
     return train_iter, test_iter
+
+
+
+
+
+
+
+
+
+
+class Accumulator():
+    def __init__(self, n) -> None:
+        self.data = [0.0]*n # 初始化
+
+    def add(self, *args):
+        self.data = [a+float(b) for a, b in zip(self.data, args)]
+    
+    def reset(self):
+        self.data = [0.0] * len(self.data)
+
+    def __getitem__(self, idx):
+        return self.data[idx] 
+    
+    
+
+        
+
+
+
+
 
 class CIFAR10_dataset(Dataset):
     def __init__(self, train=True, vaild_rate=0.1) -> None:
@@ -110,5 +194,7 @@ class CIFAR10_dataset(Dataset):
 
 #@ test
 if __name__ == "__main__":
-    CIFAR10_dataset(train=False).is_current()
+    # CIFAR10_dataset(train=False).is_current()
+    pass
+
     # print(parse_csv2label())
