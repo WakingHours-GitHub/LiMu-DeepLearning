@@ -17,9 +17,12 @@ def try_all_GPUS() -> List[torch.device]:
 
 
 
-def test_to_submission(net:nn.Module):
+def test_to_submission(net:nn.Module, load_path:str=None,devices=try_all_GPUS()):
+    net = nn.DataParallel(net, devices).to(devices[0]) # 如果训练时, 我们使用了DataParallel, 那么在测试时, 我们也一定要使用. 
+    # 然后才能load参数. 
+    net.load_state_dict(torch.load(load_path))
+
     preds = []
-    device = next(iter(net.parameters())).device
 
     datasets = CIFAR10_datasets(is_train=False)
     print(datasets.__len__())
@@ -35,7 +38,7 @@ def test_to_submission(net:nn.Module):
     
     for i, (X, _) in enumerate(test_iter):
         print(i)
-        y_hat=net(X.to(device))
+        y_hat=net(X.to(devices[0]))
         preds.extend(y_hat.argmax(dim=1).type(torch.int32).cpu().numpy())
             # break
 
@@ -51,6 +54,7 @@ def test_to_submission(net:nn.Module):
 def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs, 
         lr_period, lr_decay, weight_decay ,devices=try_all_GPUS(), load_path:str = None):
     net = torch.nn.DataParallel(net, devices).to(device=devices[0])
+    loss_fn.to(devices[0])
     if load_path:
         print("load net parameters: ", load_path)
         net.load_state_dict(torch.load(load_path))
@@ -67,13 +71,30 @@ def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs,
         metric.reset() # reset Accumulator. 
         
         for i, (features, labels) in enumerate(train_iter):
-            loss = loss_fn(net(features), labels)
+            features, labels = features.to(devices[0]), labels.to(devices[0])
+            y = net(features)
+            loss = loss_fn(y, labels)
             
             trainer.zero_grad()
-            loss.sum().backward()
+            loss.mean().backward()
             trainer.step()
 
-            
+            metric.add(loss.item(), accuracy(y, labels), 1) # 因为都是使用的平均值, 所以这里加1
+            # 如果loss, 和accuracy使用的是sum. 那么这里就要改成labels.shape[0]也就是多少个批量.
+        
+        print(epoch, "vaild accuracy:", evaluate_test_with_GPUS(net, vaild_iter), "loss:", metric[0]/metric[-1], "acc:", metric[1]/metric[-1])
+
+
+
+        # save net paramters: 
+        if (epoch+1) % 10 == 0:
+            try:
+                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{evaluate_test_with_GPUS(net, vaild_iter):3.2}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+            except:
+                os.mkdir("./logs")
+                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{evaluate_test_with_GPUS(net, vaild_iter):3.2}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+
+
             
 
 
@@ -135,8 +156,8 @@ def evaluate_test_with_GPUS(net: nn.Module, test_iter):
         for X,  label in test_iter:
             X, label = X.to(device), label.to(device)
             # matrix.add(accuracy(net(X), label), label.shape[0])
-            matrix.add(accuracy(net(X), label), 1)
-    return matrix[0] / matrix[1]
+            matrix.add(accuracy(net(X), label), 1) # here, accuracy used 'mean()' so, add 1.
+    return matrix[0] / matrix[1] # 均值.
     
 
 

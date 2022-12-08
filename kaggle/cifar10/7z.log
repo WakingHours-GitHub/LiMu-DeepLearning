@@ -6,3 +6,18 @@ Scanning the drive for archives:
 1 file, 639374249 bytes (610 MiB)
 
 Extracting archive: test.7z
+--
+Path = test.7z
+Type = 7z
+Physical Size = 639374249
+Headers Size = 1721070
+Method = LZMA:26
+Solid = +
+Blocks = 1
+
+Everything is Ok
+
+Folders: 1
+Files: 300000
+Size:       683722127
+Compressed: 639374249
