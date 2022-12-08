@@ -1,18 +1,22 @@
 import torch
-from utils import load_data_CIFAR10, train_cifar10
+from utils import  train_cifar10, test_to_submission
 from net import resnet18
 
-BATCH_SIZE = 64
-LR = 1e-1
+BATCH_SIZE = 256
+EPOCH = 200
+LR = 1e-2
 
 def main() -> None:
-    net = resnet18()
+    net = resnet18() # 实例化. 
+    # 如果使用多GPU则需要使用Dataparalleld的方式
+    net = torch.nn.DataParallel(net, range(torch.cuda.device_count())).to(device=torch.device("cuda:0"))
+    net.load_state_dict(torch.load('logs/epoch10_testacc0.72_loss0.65_acc0.77.pth'))
+
+    # train_cifar10(net, LR, BATCH_SIZE, EPOCH)
 
 
-    train_iter, test_iter = load_data_CIFAR10(BATCH_SIZE)
 
-    train_cifar10(net, LR, 100, train_iter, test_iter, torch.device("cuda:0"))
-
+    test_to_submission(net)
 
 
 

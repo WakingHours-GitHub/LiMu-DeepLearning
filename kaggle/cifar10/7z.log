@@ -1,0 +1,8 @@
+
+7-Zip [64] 16.02 : Copyright (c) 1999-2016 Igor Pavlov : 2016-05-21
+p7zip Version 16.02 (locale=zh_CN.UTF-8,Utf16=on,HugeFiles=on,64 bits,56 CPUs Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz (406F1),ASM,AES-NI)
+
+Scanning the drive for archives:
+1 file, 639374249 bytes (610 MiB)
+
+Extracting archive: test.7z
