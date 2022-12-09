@@ -12,16 +12,18 @@ def main() -> None:
     train_iter, vaild_iter = load_data_CIFAR10(BATCH_SIZE)
 
     # train_cifar10(net, LR, BATCH_SIZE, EPOCH)
-    # train(
-    #     net,
-    #     torch.nn.CrossEntropyLoss(),
-    #     train_iter, vaild_iter, 
-    #     LR, EPOCH, 10, 0.95, 5e-3,    
-    # )
+
+    train(
+        net,
+        torch.nn.CrossEntropyLoss(),
+        train_iter, vaild_iter, 
+        LR, EPOCH, 10, 0.9, 5e-3,   
+        load_path="logs/epoch160_testacc0.77_loss0.43_acc0.86.pth" 
+    )
 
 
 
-    test_to_submission(net, "logs/epoch50_testacc0.77_loss0.38_acc0.87.pth")
+    test_to_submission(net, "logs/epoch150_testacc0.81_loss0.32_acc0.89.pth")
 
 
 

@@ -22,10 +22,10 @@ def test_to_submission(net:nn.Module, load_path:str=None,devices=try_all_GPUS())
     # 然后才能load参数. 
     net.load_state_dict(torch.load(load_path))
 
-    preds = []
+    sorted_ids, preds = [], []
 
     datasets = CIFAR10_datasets(is_train=False)
-    print(datasets.__len__())
+    # print(datasets.__len__())
     test_iter = DataLoader(
         datasets,
         5000, 
@@ -36,19 +36,27 @@ def test_to_submission(net:nn.Module, load_path:str=None,devices=try_all_GPUS())
     )
     print(len(test_iter))
     
-    for i, (X, _) in enumerate(test_iter):
+    for i, (X, file_name) in enumerate(test_iter):
+        # print(file_name)
         print(i)
         y_hat=net(X.to(devices[0]))
-        preds.extend(y_hat.argmax(dim=1).type(torch.int32).cpu().numpy())
-            # break
+        sorted_ids.extend([int(i) for i in file_name])
+        preds.extend(
+            y_hat.argmax(dim=1).type(torch.int32).cpu().numpy()
+        )
+
+        # break
 
 
-    # print(preds)
-    sorted_ids = list(range(1, datasets.__len__() + 1))
-    sorted_ids.sort(key=lambda x: str(x))
+    # print(sorted_ids)
+
+    sorted_cord = sorted(zip(sorted_ids, preds), key=lambda x:x[0])
+    result = zip(*sorted_cord)
+    sorted_ids, preds = [list(x) for x in result]
+
     df = pd.DataFrame({'id': sorted_ids, 'label': preds})
     df['label'] = df['label'].apply(lambda x: datasets.classes[x])
-    df.to_csv('submission.csv', index=False)
+    df.to_csv('./submission.csv', index=False)
 
 
 def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs, 
@@ -217,6 +225,7 @@ class CIFAR10_datasets(Dataset):
             transforms.Resize(42), # 放大一点, CIFAR10的数据集是32, 放大到40, 可以给我们一点操作的空间, 让我能够有一些额外的操作. 
             transforms.RandomResizedCrop(32, scale=(0.60, 1.0), ratio=(1.0, 1.0)), 
             transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=0.5, contrast=0.5, hue=0.5),
             transforms.Normalize([0.4914, 0.4822, 0.4465], # normalize. 归一化. 
                             [0.2023, 0.1994, 0.2010])
         ])
@@ -243,7 +252,7 @@ class CIFAR10_datasets(Dataset):
                 print(e)
                 print(file_name)
                 return torch.zeros(size=(3, 32, 32)), 0
-            return img, 0
+            return img, file_name.split(".")[0]
 
 
 
