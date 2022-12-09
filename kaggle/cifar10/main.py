@@ -2,9 +2,9 @@ import torch
 from utils import  train_cifar10, test_to_submission, train, load_data_CIFAR10
 from net import resnet18
 
-BATCH_SIZE = 256
-EPOCH = 200
-LR = 1e-2
+BATCH_SIZE = 512
+EPOCH = 50
+LR = 1e-1
 
 def main() -> None:
     net = resnet18() # 实例化. 
@@ -17,13 +17,13 @@ def main() -> None:
         net,
         torch.nn.CrossEntropyLoss(),
         train_iter, vaild_iter, 
-        LR, EPOCH, 10, 0.9, 5e-3,   
-        load_path="logs/epoch160_testacc0.77_loss0.43_acc0.86.pth" 
+        LR, EPOCH, 10, 0.85, 5e-3,   
+        # load_path="logs/epoch200_testacc0.76_loss0.43_acc0.86.pth" 
     )
 
 
 
-    test_to_submission(net, "logs/epoch150_testacc0.81_loss0.32_acc0.89.pth")
+    test_to_submission(net, "logs/epoch200_testacc0.76_loss0.43_acc0.86.pth")
 
 
 

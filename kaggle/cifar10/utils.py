@@ -65,7 +65,7 @@ def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs,
     loss_fn.to(devices[0])
     if load_path:
         print("load net parameters: ", load_path)
-        net.load_state_dict(torch.load(load_path))
+        net.load_state_dict(torch.load(load_path)) # load参数. 
 
     trainer = torch.optim.SGD(net.parameters(), lr, momentum=0.9, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(trainer, step_size=lr_period, gamma=lr_decay) # 学习率衰减.
@@ -89,7 +89,7 @@ def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs,
 
             metric.add(loss.item(), accuracy(y, labels), 1) # 因为都是使用的平均值, 所以这里加1
             # 如果loss, 和accuracy使用的是sum. 那么这里就要改成labels.shape[0]也就是多少个批量.
-        
+        scheduler.step() # 每轮结束后我们要更新一下这个scheduler. 
         print(epoch, "vaild accuracy:", evaluate_test_with_GPUS(net, vaild_iter), "loss:", metric[0]/metric[-1], "acc:", metric[1]/metric[-1])
 
 
@@ -225,7 +225,7 @@ class CIFAR10_datasets(Dataset):
             transforms.Resize(42), # 放大一点, CIFAR10的数据集是32, 放大到40, 可以给我们一点操作的空间, 让我能够有一些额外的操作. 
             transforms.RandomResizedCrop(32, scale=(0.60, 1.0), ratio=(1.0, 1.0)), 
             transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(brightness=0.5, contrast=0.5, hue=0.5),
+            # transforms.ColorJitter(brightness=0.5, contrast=0.5, hue=0.5),
             transforms.Normalize([0.4914, 0.4822, 0.4465], # normalize. 归一化. 
                             [0.2023, 0.1994, 0.2010])
         ])
