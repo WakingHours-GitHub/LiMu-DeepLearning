@@ -17,6 +17,10 @@ def try_all_GPUS() -> List[torch.device]:
 
 
 
+
+
+
+
 def test_to_submission(net:nn.Module, load_path:str=None,devices=try_all_GPUS()):
     net = nn.DataParallel(net, devices).to(devices[0]) # 如果训练时, 我们使用了DataParallel, 那么在测试时, 我们也一定要使用. 
     # 然后才能load参数. 
@@ -90,17 +94,19 @@ def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs,
             metric.add(loss.item(), accuracy(y, labels), 1) # 因为都是使用的平均值, 所以这里加1
             # 如果loss, 和accuracy使用的是sum. 那么这里就要改成labels.shape[0]也就是多少个批量.
         scheduler.step() # 每轮结束后我们要更新一下这个scheduler. 
-        print(epoch, "vaild accuracy:", evaluate_test_with_GPUS(net, vaild_iter), "loss:", metric[0]/metric[-1], "acc:", metric[1]/metric[-1])
 
 
 
         # save net paramters: 
         if (epoch+1) % 10 == 0:
+            test_accuracy = evaluate_test_with_GPUS(net, vaild_iter)
+            print(epoch, "test acc:", test_accuracy, "train loss:", metric[0]/metric[-1], "train acc:", metric[1]/metric[-1])
+
             try:
-                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{evaluate_test_with_GPUS(net, vaild_iter):3.2}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:3.2}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
             except:
                 os.mkdir("./logs")
-                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{evaluate_test_with_GPUS(net, vaild_iter):3.2}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:3.2}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
 
 
             
@@ -254,12 +260,6 @@ class CIFAR10_datasets(Dataset):
                 return torch.zeros(size=(3, 32, 32)), 0
             return img, file_name.split(".")[0]
 
-
-
-
-
-
-
     def __len__(self):
         return len(self.file_name_list)
 
@@ -269,8 +269,85 @@ class CIFAR10_datasets(Dataset):
     
 
     def parse_csv2label(self):
-        with open("./trainLabels.csv", "r") as f:
-            return {ele[0]:ele[1] for ele in [line.strip().split(',') for line in f.readlines()][1: ]}
+            with open("./trainLabels.csv", "r") as f:
+                return {ele[0]:ele[1] for ele in [line.strip().split(',') for line in f.readlines()][1: ]}
+
+
+
+
+class CIFAR10_Train_Test(Dataset):
+    def __init__(self, is_train=True) -> None:
+        super().__init__()
+        self.is_train=is_train
+        if self.is_train:
+            self.path = "./train"
+        else:
+            self.path = "./test"
+            
+        self.label_dict = self.parse_csv2label() # return
+        self.classes = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+
+        self.file_name_list = os.listdir(self.path)
+
+        self.transform_train = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Resize(40), # 放大一点, CIFAR10的数据集是32, 放大到40, 可以给我们一点操作的空间, 让我能够有一些额外的操作. 
+            transforms.RandomResizedCrop(32, scale=(0.64, 1.0), ratio=(1.0, 1.0)), 
+            transforms.RandomHorizontalFlip(),
+            # transforms.ColorJitter(brightness=0.5, contrast=0.5, hue=0.5),
+            transforms.Normalize([0.4914, 0.4822, 0.4465], # normalize. 归一化. 
+                            [0.2023, 0.1994, 0.2010])
+        ])
+        self.transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize([0.4914, 0.4822, 0.4465], # normalize. 归一化. 
+                        [0.2023, 0.1994, 0.2010])
+        ])
+
+
+
+    def __getitem__(self, index):
+        file_name = self.file_name_list[index]
+        label = self.classes.index(self.label_dict[file_name.split('.')[0]])
+
+        if self.is_train:
+            img = self.transform_train(cv.imread(os.path.join(self.path, file_name)))
+        else:
+            img = self.transform_test(cv.imread(os.path.join(self.path, file_name)))
+        return img, label
+
+
+    def __len__(self):
+        return len(self.file_name_list)
+
+
+    def is_current(self):
+        print(self[0])
+
+    def load_CIFAR10_train_test_dataloader(self, batch_size, num_workers=28):
+        return DataLoader(
+            CIFAR10_Train_Test(True),
+            batch_size=batch_size,
+            num_workers=num_workers,
+            shuffle=True
+        ), DataLoader(
+            CIFAR10_Train_Test( ),
+            batch_size=batch_size,
+            shuffle=False,
+            drop_last=False,
+            num_workers=num_workers, 
+        )
+
+    
+
+    def parse_csv2label(self):
+        if self.is_train:
+            with open("./trainLabels.csv", "r") as f:
+                return {ele[0]:ele[1] for ele in [line.strip().split(',') for line in f.readlines()][1: ]}
+        else:
+            with open("./test_label.csv", "r") as f:
+                return {ele[0]:ele[1] for ele in [line.strip().split(',') for line in f.readlines()][1: ]}
+        
 
 if __name__ == '__main__':
     print(get_train_vaild_datasets())

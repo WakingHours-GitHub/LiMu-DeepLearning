@@ -65,6 +65,8 @@ class resnet18(nn.Module):
         self.flatten = nn.Flatten()
         self.linear = nn.Linear(512, 10)
 
+        self.init_parameters() # 调用一下
+
     def forward(self, X):
         X = self.stage1(X)
         X = self.stage2(X)
@@ -85,6 +87,15 @@ class resnet18(nn.Module):
         for layer in self._modules:
             X = eval("self."+layer)(X)
             print(layer, X.shape)
+
+
+    def init_parameters(self):
+        print("init parameters used by xavier_uniform method. ")
+        def init_weight(layer):
+            if isinstance(layer, nn.Linear) or isinstance(layer, nn.Conv2d):
+                nn.init.xavier_uniform_(layer.weight)
+        self.apply(init_weight)
+        
     
 
 
