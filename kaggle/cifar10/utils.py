@@ -107,7 +107,7 @@ def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs,
             except:
                 os.mkdir("./logs")
                 torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:3.2}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
-
+        
 
             
 
@@ -291,7 +291,7 @@ class CIFAR10_Train_Test(Dataset):
 
         self.transform_train = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Resize(40), # 放大一点, CIFAR10的数据集是32, 放大到40, 可以给我们一点操作的空间, 让我能够有一些额外的操作. 
+            transforms.Resize(42), # 放大一点, CIFAR10的数据集是32, 放大到40, 可以给我们一点操作的空间, 让我能够有一些额外的操作. 
             transforms.RandomResizedCrop(32, scale=(0.64, 1.0), ratio=(1.0, 1.0)), 
             transforms.RandomHorizontalFlip(),
             # transforms.ColorJitter(brightness=0.5, contrast=0.5, hue=0.5),

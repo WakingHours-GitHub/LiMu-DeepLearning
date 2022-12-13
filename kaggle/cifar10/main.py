@@ -3,8 +3,8 @@ from utils import  train_cifar10, test_to_submission, train, load_data_CIFAR10, 
 from net import resnet18
 
 BATCH_SIZE = 1024
-EPOCH = 200
-LR = 1e-1
+EPOCH = 300
+LR = 2e-1
 
 def main() -> None:
     net = resnet18() # 实例化. 
@@ -20,17 +20,12 @@ def main() -> None:
         torch.nn.CrossEntropyLoss(),
         train_iter, test_iter, 
         LR, EPOCH, 10, 0.95, 5e-3,   
-        # load_path="logs/epoch200_testacc0.76_loss0.43_acc0.86.pth" 
+        load_path="logs/epoch200_testacc0.85_loss0.33_acc0.89.pth" 
     )
 
 
-
-    test_to_submission(net, "logs/epoch200_testacc0.76_loss0.43_acc0.86.pth")
-
+    test_to_submission(net)
 
 
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

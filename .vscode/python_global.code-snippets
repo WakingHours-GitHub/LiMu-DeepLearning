@@ -17,7 +17,7 @@
 	// }
 
 	"Print": {
-		"prefix": ".print",
+		"prefix": " .print",
 		"body": "print()",
 		
 	}
