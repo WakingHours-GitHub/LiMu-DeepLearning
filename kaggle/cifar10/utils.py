@@ -17,10 +17,6 @@ def try_all_GPUS() -> List[torch.device]:
 
 
 
-
-
-
-
 def test_to_submission(net:nn.Module, load_path:str=None,devices=try_all_GPUS()):
     net = nn.DataParallel(net, devices).to(devices[0]) # 如果训练时, 我们使用了DataParallel, 那么在测试时, 我们也一定要使用. 
     # 然后才能load参数. 
@@ -63,8 +59,8 @@ def test_to_submission(net:nn.Module, load_path:str=None,devices=try_all_GPUS())
     df.to_csv('./submission.csv', index=False)
 
 
-def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs, 
-        lr_period, lr_decay, weight_decay ,devices=try_all_GPUS(), load_path:str = None):
+def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs, start_point, 
+        lr_period, lr_decay, weight_decay=5e-4,  momentum =0.9 ,devices=try_all_GPUS(), load_path:str = None):
     net = torch.nn.DataParallel(net, devices).to(device=devices[0])
     loss_fn.to(devices[0])
     if load_path:
@@ -93,8 +89,10 @@ def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs,
 
             metric.add(loss.item(), accuracy(y, labels), 1) # 因为都是使用的平均值, 所以这里加1
             # 如果loss, 和accuracy使用的是sum. 那么这里就要改成labels.shape[0]也就是多少个批量.
-        scheduler.step() # 每轮结束后我们要更新一下这个scheduler. 
-
+        if epoch > start_point:
+            scheduler.step() # 每轮结束后我们要更新一下这个scheduler. 
+            print(scheduler.get_lr())
+            
 
 
         # save net paramters: 
@@ -103,10 +101,10 @@ def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs,
             print(epoch, "test acc:", test_accuracy, "train loss:", metric[0]/metric[-1], "train acc:", metric[1]/metric[-1])
 
             try:
-                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:3.2}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
             except:
                 os.mkdir("./logs")
-                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:3.2}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
         
 
             
