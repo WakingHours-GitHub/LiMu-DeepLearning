@@ -89,16 +89,16 @@ def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs, start
 
             metric.add(loss.item(), accuracy(y, labels), 1) # 因为都是使用的平均值, 所以这里加1
             # 如果loss, 和accuracy使用的是sum. 那么这里就要改成labels.shape[0]也就是多少个批量.
-        if epoch > start_point:
+        if epoch > start_point: # 大于之后我们才开始衰减。
             scheduler.step() # 每轮结束后我们要更新一下这个scheduler. 
-            print(scheduler.get_lr())
+            # print(scheduler.get_lr())
             
 
 
         # save net paramters: 
         if (epoch+1) % 10 == 0:
             test_accuracy = evaluate_test_with_GPUS(net, vaild_iter)
-            print(epoch, "test acc:", test_accuracy, "train loss:", metric[0]/metric[-1], "train acc:", metric[1]/metric[-1])
+            print(epoch+1, "test acc:", test_accuracy, "train loss:", metric[0]/metric[-1], "train acc:", metric[1]/metric[-1])
 
             try:
                 torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
