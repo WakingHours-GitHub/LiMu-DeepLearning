@@ -3,6 +3,35 @@ from torch import nn
 from torch.nn import functional as F
 
 
+# 实现snet: 通道注意力的典型表现：
+class senet(nn.Module):
+    def __init__(self, channel, ratio=16) -> None:
+        # radio用于表示第一个全连接后的缩放比例。
+        super().__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d((1, 1)) # 输出高宽
+        self.fc = nn.Sequential(
+            nn.Linear(channel, channel // ratio, False),
+            nn.ReLU(),
+            nn.Linear(channel // ratio, channel, False),
+            nn.Sigmoid(), # 最后使结果塌陷到0,1之间. 
+        )
+
+
+    def forward(self, X):
+        b, c, h, w = X.size()
+        avg = self.avg_pool(X).reshape((b, c))
+        fc = self.fc(avg).reshape((b, c, 1, 1))
+
+        return X * fc # 对应元素相乘. 
+
+
+# CBAM: 是通道注意力和空间注意力机制的一个结合: 
+# 通道注意力机制
+class channel_atteentaion(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+
 
 class Residual(nn.Module):
     def __init__(self, in_channels, out_channels, is_use1x1Conv=False, stride=1) -> None:
@@ -55,11 +84,14 @@ class resnet18(nn.Module):
             nn.MaxPool2d(3, stride=1, padding=1),
             
         )
+        self.senet1 = senet(64)
 
         self.stage2 = nn.Sequential(*res_stage(64, 64, 2, is_first=True)) # 第一个不做高宽减半. 
+        
         self.stage3 = nn.Sequential(*res_stage(64, 128, 2))
         self.stage4 = nn.Sequential(*res_stage(128, 256, 2))
         self.stage5 = nn.Sequential(*res_stage(256, 512, 2))
+        self.senet5 = senet(512)
 
         self.global_avg = nn.AdaptiveAvgPool2d((1, 1))
         self.flatten = nn.Flatten()
@@ -69,10 +101,15 @@ class resnet18(nn.Module):
 
     def forward(self, X):
         X = self.stage1(X)
+
+        X = self.senet1(X)
+
         X = self.stage2(X)
         X = self.stage3(X)
         X = self.stage4(X)
         X = self.stage5(X)
+        X = self.senet5(X)
+
         X = self.global_avg(X)
         X = self.flatten(X)
         X = self.linear(X)
