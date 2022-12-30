@@ -28,8 +28,66 @@ class senet(nn.Module):
 # CBAM: 是通道注意力和空间注意力机制的一个结合: 
 # 通道注意力机制
 class channel_atteentaion(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, channle, ratio=16) -> None:
         super().__init__()
+        self.max_pool = nn.AdaptiveMaxPool1d(1) # 全局最大池化。 #
+        self.avg_pool = nn.AdaptiveAvgPool2d(1) # 全局平均池化。 
+
+        self.fc = nn.Sequential(
+            nn.Linear(channle, channle//ratio, False),
+            nn.ReLU(),
+            nn.Linear(channle//ratio, channle, False)
+        )
+
+        self.sigmoid = nn.Sigmoid()
+    
+    def forward(self, X: torch.Tensor):
+        b, c, h, w = X.size()
+
+        max_pool_out = self.max_pool(X)
+        avg_pool_out = self.avg_pool(X)
+
+        # fc共享参数
+        max_fc_out = self.fc(max_pool_out)
+        avg_fc_out = self.fc(avg_pool_out) 
+
+        max_fc_out += avg_fc_out
+        out = self.sigmoid(max_fc_out).reshape([b, c, 1, 1])
+
+        return out * X
+
+# 实现空间注意力机制
+class spacial_attention(nn.Module):
+    def __init__(self, kernel_size=7) -> None:
+        super().__init__()
+        self.conv = nn.Conv2d(2,1 ,kernel_size, stride=1, padding=kernel_size//2) # 不改变形状的conv
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, X):
+        max_pool_out = torch.max(X, dim=1, keepdim=True)
+        avg_pool_out = torch.mean(X, dim=1, keepdim=True)
+
+        # concat:
+        pool_out = torch.cat([max_pool_out, avg_pool_out], dim=1)
+        out = self.conv(pool_out) #  二维
+        # 然后经过sigmoid塌陷到(0, 1)之间
+        out = self.sigmoid(out)
+
+        return out * X
+
+
+
+class CBAM(nn.Module):
+    def __init__(self,  channle, ratio=16, kernel_size=7) -> None:
+        super().__init__()
+        self.channel_attenation = channel_atteentaion(channle, ratio)
+        self.spacial_attention = spacial_attention(kernel_size)
+
+    def forward(self, X):
+        x = self.channel_attenation(X)
+        x = self.spacial_attention(x)
+        return x
+
 
 
 
@@ -84,14 +142,12 @@ class resnet18(nn.Module):
             nn.MaxPool2d(3, stride=1, padding=1),
             
         )
-        self.senet1 = senet(64)
 
         self.stage2 = nn.Sequential(*res_stage(64, 64, 2, is_first=True)) # 第一个不做高宽减半. 
         
         self.stage3 = nn.Sequential(*res_stage(64, 128, 2))
         self.stage4 = nn.Sequential(*res_stage(128, 256, 2))
         self.stage5 = nn.Sequential(*res_stage(256, 512, 2))
-        self.senet5 = senet(512)
 
         self.global_avg = nn.AdaptiveAvgPool2d((1, 1))
         self.flatten = nn.Flatten()
@@ -102,13 +158,11 @@ class resnet18(nn.Module):
     def forward(self, X):
         X = self.stage1(X)
 
-        X = self.senet1(X)
 
         X = self.stage2(X)
         X = self.stage3(X)
         X = self.stage4(X)
         X = self.stage5(X)
-        X = self.senet5(X)
 
         X = self.global_avg(X)
         X = self.flatten(X)
