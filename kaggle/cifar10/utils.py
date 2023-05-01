@@ -8,6 +8,8 @@ from typing import List
 import os
 import cv2 as cv
 import random
+import math
+from torch.nn import functional as F
 
 
 def try_all_GPUS() -> List[torch.device]:
@@ -58,6 +60,59 @@ def test_to_submission(net:nn.Module, load_path:str=None,devices=try_all_GPUS())
     df['label'] = df['label'].apply(lambda x: datasets.classes[x])
     df.to_csv('./submission.csv', index=False)
 
+def train_cos(
+    net: nn.Module, loss_fn: nn.Module,
+    train_iter:DataLoader, test_iter:DataLoader,
+    lr, num_epoch,
+    momentum=0.937, weight_decay=5e-4,
+    load_path:str=None, devices=try_all_GPUS(),
+):
+    eps = 0.35
+    net = nn.DataParallel(net, devices).to(devices[0])
+    loss_fn.to(devices[0])
+    if load_path:
+        print("load net parameters: ", load_path)
+        net.load_state_dict(torch.load(load_path)) # load parameters for net module. 
+    trainer = torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
+    lf = lambda x: ((1 + math.cos(x * math.pi / num_epoch)) / 2) * (1 - eps) + eps 
+    scheduler = optim.lr_scheduler.LambdaLR(
+        optimizer=trainer, # 优化器.
+        lr_lambda=lf, # 学习率函数. 
+    ) # 根据lambda自定义学习率. 
+
+    metric = Accumulator(3)
+    trainer.zero_grad() # empty.
+    # train:
+    print("train on:", devices)
+    for epoch in range(num_epoch):
+        net.train()
+        metric.reset() # 重置
+        # train a epoch. 
+        for i, (x, labels) in enumerate(train_iter):
+            x, labels = x.to(devices[0]), labels.to(devices[0])
+            y_hat = net(x)
+            loss = loss_fn(y_hat, labels)
+
+            trainer.zero_grad() # first empty gradient
+            loss.sum().backward() # than calculate graient by backwoard (pro)
+            trainer.step() # update weight. 
+        
+            metric.add(loss.item(), accuracy(y_hat, labels), labels.shape[0])
+        
+        scheduler.step() # we only update scheduler. 
+
+        # evaluate
+        if (epoch+1) % 10 == 0:
+            test_accuracy = evaluate_test_with_GPUS(net, test_iter)
+            print(epoch+1, "test acc:", test_accuracy, "train loss:", metric[0]/metric[-1], "train acc:", metric[1]/metric[-1])
+
+            try:
+                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+            except:
+                os.mkdir("./logs")
+                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+
+
 
 def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs, start_point, 
         lr_period, lr_decay, weight_decay=5e-4,  momentum =0.9 ,devices=try_all_GPUS(), load_path:str = None):
@@ -67,7 +122,7 @@ def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs, start
         print("load net parameters: ", load_path)
         net.load_state_dict(torch.load(load_path)) # load参数. 
 
-    trainer = torch.optim.SGD(net.parameters(), lr, momentum=0.9, weight_decay=weight_decay)
+    trainer = torch.optim.SGD(net.parameters(), lr, momentum=momentum, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(trainer, step_size=lr_period, gamma=lr_decay) # 学习率衰减.
     # 每隔lr_period, 将当前lr乘以lr_decay, 达到学习率衰减的效果.
 
@@ -158,6 +213,7 @@ def train_cifar10(net, lr, batch_size, num_epoch):
 
 
 
+
 def evaluate_test_with_GPUS(net: nn.Module, test_iter):
     if isinstance(net, nn.Module):
         net.eval() # set module on evaluation mode
@@ -165,17 +221,21 @@ def evaluate_test_with_GPUS(net: nn.Module, test_iter):
     device = next(iter(net.parameters())).device # 拿出来一个参数的device
     matrix = Accumulator(2)
     with torch.no_grad():
-        for X,  label in test_iter:
-            X, label = X.to(device), label.to(device)
+        for X,  labels in test_iter:
+            X, labels = X.to(device), labels.to(device)
             # matrix.add(accuracy(net(X), label), label.shape[0])
-            matrix.add(accuracy(net(X), label), 1) # here, accuracy used 'mean()' so, add 1.
+            # print(net(X).shape)
+            matrix.add(accuracy(net(X), labels), 1)  # here, accuracy use 'sum()', so add BS. 
+            # here, accuracy used 'mean()' so, add 1.
     return matrix[0] / matrix[1] # 均值.
     
 
 
 
 def accuracy(y_hat:torch.Tensor, label:torch.Tensor):
-    return (y_hat.argmax(dim=1) == label).float().mean()
+    # because we don't use softmat layer, so we must add softmax operator in ouput.    
+    return (F.softmax(y_hat, dim=1).argmax(dim=1) == label).float().mean() # this place is sum(), so we need use BS in metric. 
+
 
 
 class Accumulator():
