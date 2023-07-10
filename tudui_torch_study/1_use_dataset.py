@@ -9,6 +9,7 @@ from torch.utils.data import Dataset, DataLoader
 import cv2 as cv  # cv读取进来的图片格式, 底层直接就是ndarray, 可以直接转换成Tensor
 from PIL import Image  # 而Image读取进来的是PIL中的类. 我们还需要进行转换,
 
+
 class MyData(Dataset):
     # 实现自己的数据集, 我们主要是重写__getitem__这个函数
     def __init__(self, root_path: str, label: str, is_train: bool = True):
@@ -17,7 +18,9 @@ class MyData(Dataset):
         """
         self.root_path = root_path
         self.label = label
-        self.path = os.path.join(self.root_path, "train" if is_train else "val", self.label)  # 可以传入可变参数.
+        # 可以传入可变参数.
+        self.path = os.path.join(
+            self.root_path, "train" if is_train else "val", self.label)
         self.file_name_list = os.listdir(self.path)
 
         pass
@@ -31,7 +34,7 @@ class MyData(Dataset):
         feature = cv.imread(os.path.join(self.path, self.file_name_list[item]))
         label = self.label
 
-        return feature, label #
+        return feature, label
 
     def __len__(self):
         """
@@ -42,7 +45,7 @@ class MyData(Dataset):
 
 def main() -> None:
     # 测试, 创建
-    root = "./hymenoptera_data"
+    root = "./data/hymenoptera_data"
     ants_label = "ants"
     bees_label = 'bees'
     ants_dataset = MyData(root, ants_label)
@@ -53,9 +56,15 @@ def main() -> None:
     print(len(ants_dataset))  # 124
     print(len(bees_dataset))  # 121
 
-    # 将两个Dataset合并成为一个Dataset:
+    # 将两个Dataset合并成为一个Dataset: Python支持运算符重载.#
+    # Dataset源码: 重载了__add__操作, 并且返回ConcatDataset对象, 也就是concat过后的对象.
+    # def __add__(self, other: 'Dataset[T_co]') -> 'ConcatDataset[T_co]':
+    #   return ConcatDataset([self, other])
+    # 具体可以看一下ConcatDataset的具体实现方式.
+
     train_dataset = ants_dataset + bees_dataset  # 直接使用+ # 即可将两个Dataset组合起来
-    print(type(train_dataset))  # <class 'torch.utils.data.dataset.ConcatDataset'> # concat: 合并多个数组.
+    # <class 'torch.utils.data.dataset.ConcatDataset'> # concat: 合并多个数组.
+    print(type(train_dataset))
     print(len(train_dataset))  # 245 # 也就是说我们将两个数据集相加起来.
 
     print(train_dataset[123])  # 蚂蚁

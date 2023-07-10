@@ -39,34 +39,32 @@ transform的结果和用法: 直接查看transforms的源代码. 里面都有非
 """
 import torch
 from torchvision import transforms  # 导入transforms.
-from PIL import Image # 通过Image读取的就是Image类型.
-import cv2 as cv # 通过opencv读取进来的就是ndarray
-from torch.utils.tensorboard import SummaryWriter # TensorBoard
-
+from PIL import Image  # 通过Image读取的就是Image类型.
+import cv2 as cv  # 通过opencv读取进来的就是ndarray
+from torch.utils.tensorboard import SummaryWriter  # TensorBoard
 
 
 # 代码:
 # 首先我们通过Image读取进来一张Image图片
 img_PIT = Image.open("hymenoptera_data/train/ants/0013035.jpg")
-print(img_PIT) # <PIL.JpegImagePlugin.JpegImageFile image mode=RGB size=768x512 at 0x7F061900FAC0>
+# <PIL.JpegImagePlugin.JpegImageFile image mode=RGB size=768x512 at 0x7F061900FAC0> # PLT对象.
+print(img_PIT)
 
 # 这显然不符合我们的Tensor数据类型. 所以我们需要对其使用transform进行转换.
 # 生成transform实例
-trans_obj = transforms.ToTensor() # 返回对象
-tensor_img = trans_obj(img_PIT) # 将对象当作函数调用, 默认调用__call__()魔术方法
- #
-print(type(tensor_img)) # <class 'torch.Tensor'> # 这就是Tenosr对象.
+trans_obj = transforms.ToTensor()  # 返回对象
+tensor_img = trans_obj(img_PIT)  # 将对象当作函数调用, 默认调用__call__()魔术方法
+#
+print(type(tensor_img))  # <class 'torch.Tensor'> # 这就是Tenosr对象.
 
 
 writer = SummaryWriter("logs")
 
 
-
-
 # 使用opencv读取:
 img_ndarray = cv.imread("hymenoptera_data/train/ants/0013035.jpg")
 img_tensor = trans_obj(img_ndarray)
-print(type(img_tensor)) # <class 'torch.Tensor'>
+print(type(img_tensor))  # <class 'torch.Tensor'>
 
 writer.add_image(
     tag="Tensor",
@@ -75,12 +73,3 @@ writer.add_image(
 )
 
 writer.close()
-
-
-
-
-
-
-
-
-
