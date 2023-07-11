@@ -20,8 +20,8 @@ torchvision中的数据集的使用:
     root: 数据集的位置. 当数据集不存在时, 默认下载到该地方.
     train: 是否是训练集.
     transform: 就是要对input(feature)进行的预处理. 与前面讲解的transform对应
-    target_transform: 就是对lanel进行的预处理.
-    download: 是否下载,
+    target_transform: 就是对label进行的预处理.
+    download: 是否下载
 
 
     介绍一下CIFAR-10 dataset:
@@ -43,7 +43,11 @@ from PIL import Image
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import torch
+import os, sys
+from torch.utils.data import DataLoader
 
+
+os.chdir(sys.path[0])
 
 
 writer = SummaryWriter("./logs")
@@ -54,24 +58,23 @@ writer = SummaryWriter("./logs")
 def combine_datasets_transform() -> None:
     CIFAR10_transform = transforms.Compose([
         transforms.ToTensor(),
-    ])
-    train_set = torchvision.datasets.CIFAR10(
-        "./torch_datasets",
+    ]) 
+    train_set = torchvision.datasets.CIFAR10( # 在dataset的时候就设置好transforms     
+        "../data", 
         transform=CIFAR10_transform, # 这里设置上面定义好的transform. 这样我们就可以,
         # 将读取之后的image进行预处理, 经过transform.
         download=True
 
     )
     test_set = torchvision.datasets.CIFAR10(
-        "./torch_datasets",
+        "../data",
         train=False,
         transform=CIFAR10_transform,
         download=True
-
     )
 
     for i in range(10):
-        img, label = train_set[i]
+        img, label = train_set[i] # 取出数据集中的样本。
         writer.add_image("combine of torchvision datasets and transform", img, i)
 
 
@@ -79,12 +82,12 @@ def combine_datasets_transform() -> None:
 
 def torchvision_datasets() -> None:
     train_set = torchvision.datasets.CIFAR10(
-        root="./torch_datasets", # 数据保存的地址
+        root="../data", # 数据保存的地址
         train=True, # 默认为true,
         transform=None,
         download=True
     )
-    test_set = torchvision.datasets.CIFAR10("./torch_datasets", True, None, download=True)
+    test_set = torchvision.datasets.CIFAR10("../data", True, None, download=True)
 
     # 这些数据集的样式: ((feature, label), ...)
     # 是一个双重嵌套迭代器. 第一层包含着每个样本, 然后每个样本中又包含着feature和label
@@ -98,12 +101,29 @@ def torchvision_datasets() -> None:
     print(img, target)
     print(train_set.classes[target])
 
+def torchvision_datalaoder() -> None:
+    trans = transforms.Compose([        
+        transforms.Resize(40),
+        transforms.ToTensor(),
+        transforms.RandomCrop(32)
+    ])
+    train_set = torchvision.datasets.CIFAR10("../data", True, transform=trans, download=True)
+    train_iter = DataLoader(train_set, 32, True, num_workers=16)
+    
+    imgs, labels = iter(train_iter).__next__()
+    
+    writer.add_images("images", imgs, 1)
+    
+
 
 
 if __name__ == '__main__':
     # torchvision_datasets()
 
-    combine_datasets_transform()
+    # combine_datasets_transform()
+    
+    
+    torchvision_datalaoder()
 
 
 
