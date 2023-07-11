@@ -1,5 +1,5 @@
 """
-__call__: 函数: 就是将实例当作函数时候调用的方法.
+__call__: 函数: 就是将实例(对象)当作函数时候调用的方法.
 
 
 
@@ -23,7 +23,7 @@ __call__: 函数: 就是将实例当作函数时候调用的方法.
         注意, mean, std应该和通道数同维度, 也就是有图片有几个维度, 那么mean和std就应该有对应维度.
         ``output[channel] = (input[channel] - mean[channel]) / std[channel]``
     5. transforms.Resize()
-        resize输入的PLT image 到给定的size大小, 注意, 只能使用PLT image类型, 不能使用其他类型
+        resize输入的PLT image 到给定的size大小, 也可以使用Tensor类型.
         如果给定是一个序列:(h, w)那么input就会缩放到这个大小
         如果只给定了一个数, 那么就按照最短边缩放到这个数值
 
@@ -161,7 +161,7 @@ if __name__ == '__main__':
     # test02()
     test03()
 
-writer.close()
+writer.close() # 记得要关闭writer.
 
 
 

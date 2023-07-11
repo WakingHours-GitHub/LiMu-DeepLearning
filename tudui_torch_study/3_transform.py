@@ -58,7 +58,7 @@ tensor_img = trans_obj(img_PIT)  # 将对象当作函数调用, 默认调用__ca
 print(type(tensor_img))  # <class 'torch.Tensor'> # 这就是Tenosr对象.
 
 
-writer = SummaryWriter("logs")
+writer = SummaryWriter("logs") # 指定存放event文件的文件夹.
 
 
 # 使用opencv读取:

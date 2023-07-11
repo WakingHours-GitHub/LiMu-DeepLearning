@@ -35,6 +35,11 @@ class myDataSet(Dataset):
 
 def main() -> None:
     print(myDataSet("../data/hymenoptera_data/", "ants")[0])
+    
+    # 然后将两个数据集拼在一起, 操作符重载: __add__返回ConcatDataset对象.
+    concat_dataset = myDataSet("../data/hymenoptera_data/", "ants") + myDataSet("../data/hymenoptera_data/", "bees") # return ConcatDataset对象.
+    print(concat_dataset.__len__())
+    
 
 
 if __name__ == "__main__":
