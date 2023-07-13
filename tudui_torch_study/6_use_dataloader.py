@@ -31,29 +31,35 @@ torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=None, sampler=None, b
         batch_size: 就是批量大小, 这是一个超参数.  默认为1.
         shuffle: 是否是shuffle也就是打乱. 默认为False.
         num_workers: load数据时, 使用的进程数. 默认0. 一般为2的次幂
-        drop_lass: 是否丢弃最后一个batch. 默认为False.
+        drop_last: 是否丢弃最后一个batch. 默认为False.
+        sampler: 采样器, 就是以什么样的方式来组织数据.
 
 
 
 """
+
+
 
 import torchvision
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
+import os, sys
+os.chdir(sys.path[0])
+
 write = SummaryWriter("./logs")
 
 def use_dataloader() -> None:
     # 因为测试集比较小, 方便测试, 这里我们只是看一下效果
-    test_dataset = torchvision.datasets.CIFAR10("./torch_datasets", train=False, transform=transforms.ToTensor(),
+    test_dataset = torchvision.datasets.CIFAR10("../data", train=False, transform=transforms.ToTensor(),
                                                 download=True)
 
     img, label = test_dataset[0]
     print(img, label)
 
     # 然后我们生成DataLoader:
-    test_dataloader = DataLoader(
+    test_dataloader = DataLoader( # 返回一个类迭代器iterator
         dataset=test_dataset,  # 选择对应的dataset
         batch_size=64,  # 超参数, 也就是一个批量的大小
         shuffle=True,  # 每次是否打乱
@@ -67,12 +73,13 @@ def use_dataloader() -> None:
 
         # test_dataloader实际上是一个迭代器. (yield返回数据)
         for idx, data_batch in enumerate(test_dataloader):
+            # print(idx)
             img_batch, label_batch = data_batch
             # print(img_batch.shape)  # torch.Size([64, 3, 32, 32])
             # print(label_batch.shape)  # torch.Size([64])
 
             # 我们可以进行一些展示:
-            # 注意, 这里是add_images. 接受的参数是可以是4D的数据, 是批量的图片数据.
+            # 注意, 这里是add_images. 接受的参数是可以是4D的数据, 是批量的图片数据. Tensor对象, [B, C, H, W]
             # 而add_image, 只能接受3D的图片数据.
             write.add_images(f"DataLoader_{epoch}", img_batch, idx)
             """
