@@ -60,21 +60,12 @@ Modules can also contain other Modules, allowing to nest them in a tree structur
 
         # Defines the computation performed at every call. # 每次调用时的计算
         # Should be overridden by all subclasses. # 所有的子类应该重写.
+        # 其实底层就是实现了__call__()方法.
         def forward(self, x): # 进行前向传播, 就是我们一层一层的要干什么.
             x = F.relu(self.conv1(x))
             return F.relu(self.conv2(x))
             # 返回的就是最终的网络输出结果.
             # forward中写的就是我们的神经网络架构.
-
-
-
-
-
-
-
-
-
-
 
 """
 import torch
@@ -85,7 +76,7 @@ from torch import nn
 # 创建一个块的方式. 
 class TestModule(nn.Module): # 继承父类的Module
     """我们可以直接alt+insert进行快速重写父类方法."""
-
+    
     def __init__(self) -> None:
         super().__init__()
 

@@ -3,14 +3,22 @@ from torchvision import transforms
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from torch import nn
+from torch import nn # neural network, 神经网络.
 import torch.nn.functional as F # 这里面是一些常用的函数.
 import cv2 as cv
 import numpy as np
 
 write = SummaryWriter("./logs")
+import sys, os
+
+os.chdir(sys.path[0])
 
 """
+torch.nn.functional里面是一些基础操作就是函数, 直接使用
+torch.nn相当于对functional中的操作进行了一步封装, 需要先定义, 在使用.
+
+
+
 首先我们来学习卷积这个操作. 
 我们首先学习一下torc.nn.functional.conv2d(), 也就是这个卷积操作.
 
@@ -31,6 +39,7 @@ write = SummaryWriter("./logs")
         device=None, 
         dtype=None
     )
+    
 Parameters:
         in_channels (int) – Number of channels in the input image
         out_channels (int) – Number of channels produced by the convolution
@@ -120,7 +129,7 @@ def test_torch_nn_functional_conv2d() -> None:
         [1, 2, 1, 0, 0],
         [5, 2, 3, 1, 1],
         [2, 1, 0, 1, 1]
-    ]).reshape((1, 1, 5, 5)) # 我们要手动reshape一下,
+    ]).reshape((1, 1, 5, 5)) # 我们要手动reshape一下, 变成4-D
     # 变成: [batch_size, channel, h, w)
 
 
@@ -167,7 +176,7 @@ def test_torch_nn_functional_conv2d() -> None:
 
     # so 计算公式如下:
     # 计算公式:
-    # new_H = [(H+2*padding-K)/stride + 1]向下取整ssss
+    # new_H = [(H+2*padding-K)/stride + 1]向下取整
     # K是kernel的长度.
 
 if __name__ == '__main__':
