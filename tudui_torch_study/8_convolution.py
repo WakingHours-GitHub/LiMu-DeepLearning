@@ -36,7 +36,7 @@ torch.nn相当于对functional中的操作进行了一步封装, 需要先定义
         groups=1, # 分组卷积, 一般设置为1
         bias=True, # 是否加上偏置，一个卷积对应一个偏执.
         padding_mode='zeros', #  填充方式
-        device=None, 
+        device=None,
         dtype=None
     )
     
@@ -74,6 +74,52 @@ class MyConvolution2Dimension(nn.Module): # 继承
         return self.conv2d_1(X)
 
 
+class Convolution3to6to3(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.conv1 = nn.Conv2d(
+            3, 6,
+            kernel_size=3,
+            stride=1,
+            padding=1
+        )
+        self.relu = nn.ReLU()
+        self.conv2 = nn.Conv2d(
+            6, 3, 3, 1, 1
+        )
+        
+    def forward(self, x):
+        return self.relu(self.conv2(self.relu(self.conv1(x))))
+
+
+def Conv2d_layer_test2() -> None:
+    test_datasets = torchvision.datasets.CIFAR10(
+        "../data", train=False,
+        transform=transforms.Compose([
+            transforms.Resize(40),
+            transforms.ToTensor(),
+        ]),
+        download=True
+    )
+    test_iter = DataLoader(
+        test_datasets,
+        batch_size=16,
+        shuffle=False,
+        num_workers=28,
+
+    )
+    writer = SummaryWriter("./logs")
+    net = Convolution3to6to3().to(0)
+    
+    for idx, (imgs, labels) in enumerate(test_iter):
+        imgs, labels = imgs.to(0), labels.to(0)
+        writer.add_images("before CONV2d", imgs, idx)
+        y_hat = net(imgs)
+        writer.add_images("after CONV2d", y_hat, idx)
+        
+        break
+    
+
 def conv2d_layer_test() -> None:
     """
     conv2d的实战, 我们首先自己定义自己的网络模型, 然后生成数据集
@@ -102,7 +148,7 @@ def conv2d_layer_test() -> None:
         # 我们这里做一个不那么严谨的操作: 也就是reshape一下
         write.add_images("before_conv2d:", feature, idx)
         y_hat = y_hat.reshape((-1, 3, 30, 30)) # create view
-        # 或者使用torch.reshape
+        # 或者使用torch.reshape(更常用)
         write.add_images("after_conv2d", y_hat, idx)
 
         #
@@ -183,8 +229,8 @@ if __name__ == '__main__':
     # test_torch_nn_functional_conv2d()
 
     print(MyConvolution2Dimension) # 直接打印网络结构. 
-    conv2d_layer_test()
-
+    # conv2d_layer_test()
+    Conv2d_layer_test2()
 
 
 
