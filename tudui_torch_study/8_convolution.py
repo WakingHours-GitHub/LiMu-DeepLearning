@@ -91,6 +91,12 @@ class Convolution3to6to3(nn.Module):
     def forward(self, x):
         return self.relu(self.conv2(self.relu(self.conv1(x))))
 
+    def xaviver_init(self, layer:nn.Module):
+        if isinstance(layer, nn.Linear) or isinstance(layer, nn.Conv2d):
+            nn.init.xavier_normal_(layer.weight)
+            nn.init.zeros_(layer.bias) 
+        
+
 
 def Conv2d_layer_test2() -> None:
     test_datasets = torchvision.datasets.CIFAR10(
