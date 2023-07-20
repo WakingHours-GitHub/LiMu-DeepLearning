@@ -13,8 +13,7 @@ from torch.nn import functional as F
 
 
 def try_all_GPUS() -> List[torch.device]:
-    devices = []
-    devices.extend([torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())])
+    devices = [torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())]
     return devices if devices else "cpu"
 
 
@@ -275,9 +274,9 @@ class CIFAR10_datasets(Dataset):
         super().__init__()
         self.is_train=is_train
         if self.is_train:
-            self.path = "./train"
+            self.path = "~/data_fine/cifar-10/train"
         else:
-            self.path = "./test"
+            self.path = "~/data_fine/cifar-10/test"
             
         self.label_dict = self.parse_csv2label() # return
         self.classes = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
