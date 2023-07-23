@@ -364,7 +364,7 @@ class Accumulator():
         return self.data[idx]
 
 
-def load_data_CIFAR10(batch_size, num_workers=28):
+def load_data_CIFAR10(batch_size, num_workers=14):
     # 我自己编写的CIFAR10 datasets也可以正常使用
     train_datasets, test_datasets = get_train_vaild_datasets()
 
