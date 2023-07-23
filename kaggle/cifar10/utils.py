@@ -17,10 +17,9 @@ def try_all_GPUS() -> List[torch.device]:
     return devices if devices else "cpu"
 
 
-
-def test_to_submission(net:nn.Module, load_path:str=None,devices=try_all_GPUS()):
-    net = nn.DataParallel(net, devices).to(devices[0]) # 如果训练时, 我们使用了DataParallel, 那么在测试时, 我们也一定要使用. 
-    # 然后才能load参数. 
+def test_to_submission(net: nn.Module, load_path: str = None, devices=try_all_GPUS()):
+    net = nn.DataParallel(net, devices).to(devices[0])  # 如果训练时, 我们使用了DataParallel, 那么在测试时, 我们也一定要使用.
+    # 然后才能load参数.
     net.load_state_dict(torch.load(load_path))
 
     sorted_ids, preds = [], []
@@ -29,18 +28,18 @@ def test_to_submission(net:nn.Module, load_path:str=None,devices=try_all_GPUS())
     # print(datasets.__len__())
     test_iter = DataLoader(
         datasets,
-        5000, 
+        5000,
         False,
-        num_workers=28, 
+        num_workers=28,
         drop_last=False,
 
     )
     print(len(test_iter))
-    
+
     for i, (X, file_name) in enumerate(test_iter):
         # print(file_name)
         print(i)
-        y_hat=net(X.to(devices[0]))
+        y_hat = net(X.to(devices[0]))
         sorted_ids.extend([int(i) for i in file_name])
         preds.extend(
             y_hat.argmax(dim=1).type(torch.int32).cpu().numpy()
@@ -48,10 +47,9 @@ def test_to_submission(net:nn.Module, load_path:str=None,devices=try_all_GPUS())
 
         # break
 
-
     # print(sorted_ids)
 
-    sorted_cord = sorted(zip(sorted_ids, preds), key=lambda x:x[0])
+    sorted_cord = sorted(zip(sorted_ids, preds), key=lambda x: x[0])
     result = zip(*sorted_cord)
     sorted_ids, preds = [list(x) for x in result]
 
@@ -59,70 +57,174 @@ def test_to_submission(net:nn.Module, load_path:str=None,devices=try_all_GPUS())
     df['label'] = df['label'].apply(lambda x: datasets.classes[x])
     df.to_csv('./submission.csv', index=False)
 
-def train_cos(
+
+class EMA():
+    def __init__(self, model, decay):
+        self.model = model
+        self.decay = decay
+        self.shadow = {}
+        self.backup = {}
+
+    def register(self):
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                self.shadow[name] = param.data.clone()
+
+    def update(self):
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                assert name in self.shadow
+                new_average = (1.0 - self.decay) * param.data + self.decay * self.shadow[name]
+                self.shadow[name] = new_average.clone()
+
+    def apply_shadow(self):
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                assert name in self.shadow
+                self.backup[name] = param.data
+                param.data = self.shadow[name]
+
+    def restore(self):
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                assert name in self.backup
+                param.data = self.backup[name]
+        self.backup = {}
+
+def train_cos_ema(
     net: nn.Module, loss_fn: nn.Module,
-    train_iter:DataLoader, test_iter:DataLoader,
+    train_iter: DataLoader, test_iter: DataLoader,
     lr, num_epoch,
     momentum=0.937, weight_decay=5e-4,
-    load_path:str=None, devices=try_all_GPUS(),
+    load_path: str = None, devices=try_all_GPUS(),
+):
+    net = nn.DataParallel(net, devices).to(devices[0])
+    
+    ema = EMA(net, 0.999)
+    ema.register() # 注册.
+    
+    eps = 0.35
+    loss_fn.to(devices[0])
+    
+    if load_path:
+        print("load net parameters: ", load_path)
+        net.load_state_dict(torch.load(load_path))  # load parameters for net module.
+    trainer = torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
+    def lf(x): return ((1 + math.cos(x * math.pi / num_epoch)) / 2) * (1 - eps) + eps
+    scheduler = optim.lr_scheduler.LambdaLR(
+        optimizer=trainer,  # 优化器.
+        lr_lambda=lf,  # 学习率函数.
+    )  # 根据lambda自定义学习率.
+
+    metric = Accumulator(3)
+    trainer.zero_grad()  # empty.
+    # train:
+    print("train on:", devices)
+    for epoch in range(num_epoch):
+        net.train()
+        metric.reset()  # 重置
+        # train a epoch.
+        for i, (x, labels) in enumerate(train_iter):
+            x, labels = x.to(devices[0]), labels.to(devices[0])
+            y_hat = net(x)
+            loss = loss_fn(y_hat, labels)
+
+            trainer.zero_grad()  # first empty gradient
+            loss.sum().backward()  # than calculate graient by backwoard (pro)
+            trainer.step()  # update weight.
+            ema.update()
+            
+
+            metric.add(loss.item(), accuracy(y_hat, labels), labels.shape[0])
+
+        scheduler.step()  # we only update scheduler.
+
+        # evaluate
+        if (epoch + 1) % 10 == 0:
+            test_accuracy = evaluate_test_with_GPUS_ema(ema, net, test_iter)
+            print(epoch + 1, "test acc:", test_accuracy, "train loss:",
+                  metric[0] / metric[-1], "train acc:", metric[1] / metric[-1])
+
+            try:
+                torch.save(
+                    net.state_dict(),
+                    f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+            except BaseException:
+                os.mkdir("./logs")
+                torch.save(
+                    net.state_dict(),
+                    f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+
+
+
+def train_cos(
+    net: nn.Module, loss_fn: nn.Module,
+    train_iter: DataLoader, test_iter: DataLoader,
+    lr, num_epoch,
+    momentum=0.937, weight_decay=5e-4,
+    load_path: str = None, devices=try_all_GPUS(),
 ):
     eps = 0.35
     net = nn.DataParallel(net, devices).to(devices[0])
     loss_fn.to(devices[0])
     if load_path:
         print("load net parameters: ", load_path)
-        net.load_state_dict(torch.load(load_path)) # load parameters for net module. 
+        net.load_state_dict(torch.load(load_path))  # load parameters for net module.
     trainer = torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
-    lf = lambda x: ((1 + math.cos(x * math.pi / num_epoch)) / 2) * (1 - eps) + eps 
+    def lf(x): return ((1 + math.cos(x * math.pi / num_epoch)) / 2) * (1 - eps) + eps
     scheduler = optim.lr_scheduler.LambdaLR(
-        optimizer=trainer, # 优化器.
-        lr_lambda=lf, # 学习率函数. 
-    ) # 根据lambda自定义学习率. 
+        optimizer=trainer,  # 优化器.
+        lr_lambda=lf,  # 学习率函数.
+    )  # 根据lambda自定义学习率.
 
     metric = Accumulator(3)
-    trainer.zero_grad() # empty.
+    trainer.zero_grad()  # empty.
     # train:
     print("train on:", devices)
     for epoch in range(num_epoch):
         net.train()
-        metric.reset() # 重置
-        # train a epoch. 
+        metric.reset()  # 重置
+        # train a epoch.
         for i, (x, labels) in enumerate(train_iter):
             x, labels = x.to(devices[0]), labels.to(devices[0])
             y_hat = net(x)
             loss = loss_fn(y_hat, labels)
 
-            trainer.zero_grad() # first empty gradient
-            loss.sum().backward() # than calculate graient by backwoard (pro)
-            trainer.step() # update weight. 
-        
+            trainer.zero_grad()  # first empty gradient
+            loss.sum().backward()  # than calculate graient by backwoard (pro)
+            trainer.step()  # update weight.
+
             metric.add(loss.item(), accuracy(y_hat, labels), labels.shape[0])
-        
-        scheduler.step() # we only update scheduler. 
+
+        scheduler.step()  # we only update scheduler.
 
         # evaluate
-        if (epoch+1) % 10 == 0:
+        if (epoch + 1) % 10 == 0:
             test_accuracy = evaluate_test_with_GPUS(net, test_iter)
-            print(epoch+1, "test acc:", test_accuracy, "train loss:", metric[0]/metric[-1], "train acc:", metric[1]/metric[-1])
+            print(epoch + 1, "test acc:", test_accuracy, "train loss:",
+                  metric[0] / metric[-1], "train acc:", metric[1] / metric[-1])
 
             try:
-                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
-            except:
+                torch.save(
+                    net.state_dict(),
+                    f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+            except BaseException:
                 os.mkdir("./logs")
-                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                torch.save(
+                    net.state_dict(),
+                    f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
 
 
-
-def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs, start_point, 
-        lr_period, lr_decay, weight_decay=5e-4,  momentum =0.9 ,devices=try_all_GPUS(), load_path:str = None):
+def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs, start_point,
+          lr_period, lr_decay, weight_decay=5e-4, momentum=0.9, devices=try_all_GPUS(), load_path: str = None):
     net = torch.nn.DataParallel(net, devices).to(device=devices[0])
     loss_fn.to(devices[0])
     if load_path:
         print("load net parameters: ", load_path)
-        net.load_state_dict(torch.load(load_path)) # load参数. 
+        net.load_state_dict(torch.load(load_path))  # load参数.
 
     trainer = torch.optim.SGD(net.parameters(), lr, momentum=momentum, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.StepLR(trainer, step_size=lr_period, gamma=lr_decay) # 学习率衰减.
+    scheduler = torch.optim.lr_scheduler.StepLR(trainer, step_size=lr_period, gamma=lr_decay)  # 学习率衰减.
     # 每隔lr_period, 将当前lr乘以lr_decay, 达到学习率衰减的效果.
 
     metric = Accumulator(3)
@@ -130,43 +232,38 @@ def train(net: nn.Module, loss_fn, train_iter, vaild_iter, lr, num_epochs, start
     print("train on: ", devices)
     for epoch in range(num_epochs):
         net.train()
-        metric.reset() # reset Accumulator. 
-        
+        metric.reset()  # reset Accumulator.
+
         for i, (features, labels) in enumerate(train_iter):
             features, labels = features.to(devices[0]), labels.to(devices[0])
             y = net(features)
             loss = loss_fn(y, labels)
-            
+
             trainer.zero_grad()
             loss.mean().backward()
             trainer.step()
 
-            metric.add(loss.item(), accuracy(y, labels), 1) # 因为都是使用的平均值, 所以这里加1
+            metric.add(loss.item(), accuracy(y, labels), 1)  # 因为都是使用的平均值, 所以这里加1
             # 如果loss, 和accuracy使用的是sum. 那么这里就要改成labels.shape[0]也就是多少个批量.
-        if epoch > start_point: # 大于之后我们才开始衰减。
-            scheduler.step() # 每轮结束后我们要更新一下这个scheduler. 
+        if epoch > start_point:  # 大于之后我们才开始衰减。
+            scheduler.step()  # 每轮结束后我们要更新一下这个scheduler.
             # print(scheduler.get_lr())
-            
 
-
-        # save net paramters: 
-        if (epoch+1) % 10 == 0:
+        # save net paramters:
+        if (epoch + 1) % 10 == 0:
             test_accuracy = evaluate_test_with_GPUS(net, vaild_iter)
-            print(epoch+1, "test acc:", test_accuracy, "train loss:", metric[0]/metric[-1], "train acc:", metric[1]/metric[-1])
+            print(epoch + 1, "test acc:", test_accuracy, "train loss:",
+                  metric[0] / metric[-1], "train acc:", metric[1] / metric[-1])
 
             try:
-                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
-            except:
+                torch.save(
+                    net.state_dict(),
+                    f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+            except BaseException:
                 os.mkdir("./logs")
-                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
-        
-
-            
-
-
-
-    
-
+                torch.save(
+                    net.state_dict(),
+                    f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
 
 
 def train_cifar10(net, lr, batch_size, num_epoch):
@@ -181,7 +278,7 @@ def train_cifar10(net, lr, batch_size, num_epoch):
     trainer = optim.SGD(net.parameters(), lr, weight_decay=1e-4)
 
     # if isinstance(net, nn.Module):
-        # net.train()
+    # net.train()
     metric = Accumulator(3)
 
     for epoch in range(num_epoch):
@@ -197,59 +294,74 @@ def train_cifar10(net, lr, batch_size, num_epoch):
             trainer.step()
 
             metric.add(accuracy(y_hat, label), loss.item(), 1)
-        
-        if (epoch+1) % 10 == 0:
+
+        if (epoch + 1) % 10 == 0:
             try:
-                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{evaluate_test_with_GPUS(net, vaild_iter):3.2}_loss{metric[1]/metric[-1]:3.2}_acc{metric[0]/metric[-1]:.2}.pth")
-            except:
+                torch.save(
+                    net.state_dict(),
+                    f"./logs/epoch{epoch+1}_testacc{evaluate_test_with_GPUS(net, vaild_iter):3.2}_loss{metric[1]/metric[-1]:3.2}_acc{metric[0]/metric[-1]:.2}.pth")
+            except BaseException:
                 os.mkdir("./logs")
-                torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{evaluate_test_with_GPUS(net, vaild_iter):3.2}_loss{metric[1]/metric[-1]:3.2}_acc{metric[0]/metric[-1]:.2}.pth")
+                torch.save(
+                    net.state_dict(),
+                    f"./logs/epoch{epoch+1}_testacc{evaluate_test_with_GPUS(net, vaild_iter):3.2}_loss{metric[1]/metric[-1]:3.2}_acc{metric[0]/metric[-1]:.2}.pth")
+
+        print(epoch, loss.item(), metric[0] / metric[-1])
 
 
-        print(epoch, loss.item(), metric[0]/metric[-1])
-
-
-
-
-
-
-def evaluate_test_with_GPUS(net: nn.Module, test_iter):
+def evaluate_test_with_GPUS_ema(ema, net: nn.Module, test_iter):
     if isinstance(net, nn.Module):
-        net.eval() # set module on evaluation mode
+        net.eval()  # set module on evaluation mode
+        ema.apply_shadow()
+        
 
-    device = next(iter(net.parameters())).device # 拿出来一个参数的device
+    device = next(iter(net.parameters())).device  # 拿出来一个参数的device
     matrix = Accumulator(2)
     with torch.no_grad():
-        for X,  labels in test_iter:
+        for X, labels in test_iter:
             X, labels = X.to(device), labels.to(device)
             # matrix.add(accuracy(net(X), label), label.shape[0])
             # print(net(X).shape)
-            matrix.add(accuracy(net(X), labels), 1)  # here, accuracy use 'sum()', so add BS. 
+            matrix.add(accuracy(net(X), labels), 1)  # here, accuracy use 'sum()', so add BS.
             # here, accuracy used 'mean()' so, add 1.
-    return matrix[0] / matrix[1] # 均值.
+    ema.restore()
     
+    return matrix[0] / matrix[1]  # 均值.
+
+def evaluate_test_with_GPUS(net: nn.Module, test_iter):
+    if isinstance(net, nn.Module):
+        net.eval()  # set module on evaluation mode
+
+    device = next(iter(net.parameters())).device  # 拿出来一个参数的device
+    matrix = Accumulator(2)
+    with torch.no_grad():
+        for X, labels in test_iter:
+            X, labels = X.to(device), labels.to(device)
+            # matrix.add(accuracy(net(X), label), label.shape[0])
+            # print(net(X).shape)
+            matrix.add(accuracy(net(X), labels), 1)  # here, accuracy use 'sum()', so add BS.
+            # here, accuracy used 'mean()' so, add 1.
+    return matrix[0] / matrix[1]  # 均值.
 
 
-
-def accuracy(y_hat:torch.Tensor, label:torch.Tensor):
-    # because we don't use softmat layer, so we must add softmax operator in ouput.    
-    return (F.softmax(y_hat, dim=1).argmax(dim=1) == label).float().mean() # this place is sum(), so we need use BS in metric. 
-
+def accuracy(y_hat: torch.Tensor, label: torch.Tensor):
+    # because we don't use softmat layer, so we must add softmax operator in ouput.
+    # this place is sum(), so we need use BS in metric.
+    return (F.softmax(y_hat, dim=1).argmax(dim=1) == label).float().mean()
 
 
 class Accumulator():
     def __init__(self, n) -> None:
-        self.data = [0.0]*n # 初始化
+        self.data = [0.0] * n  # 初始化
 
     def add(self, *args):
-        self.data = [a+float(b) for a, b in zip(self.data, args)]
-    
+        self.data = [a + float(b) for a, b in zip(self.data, args)]
+
     def reset(self):
         self.data = [0.0] * len(self.data)
 
     def __getitem__(self, idx):
-        return self.data[idx] 
-
+        return self.data[idx]
 
 
 def load_data_CIFAR10(batch_size, num_workers=28):
@@ -261,51 +373,49 @@ def load_data_CIFAR10(batch_size, num_workers=28):
 
     return train_iter, test_iter
 
+
 def get_train_vaild_datasets(vaild_rate=0.1):
     train_datasets = CIFAR10_datasets()
     len = train_datasets.__len__()
 
-    return random_split(train_datasets, [int(len-len*vaild_rate), int(len*vaild_rate)])
+    return random_split(train_datasets, [int(len - len * vaild_rate), int(len * vaild_rate)])
 
-    
 
 class CIFAR10_datasets(Dataset):
     def __init__(self, is_train=True) -> None:
         super().__init__()
-        self.is_train=is_train
+        self.is_train = is_train
         if self.is_train:
             self.path = "~/data_fine/cifar-10/train"
         else:
             self.path = "~/data_fine/cifar-10/test"
-            
-        self.label_dict = self.parse_csv2label() # return
+
+        self.label_dict = self.parse_csv2label()  # return
         self.classes = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 
         self.file_name_list = os.listdir(self.path)
 
         self.transform_train = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Resize(42), # 放大一点, CIFAR10的数据集是32, 放大到40, 可以给我们一点操作的空间, 让我能够有一些额外的操作. 
-            transforms.RandomResizedCrop(32, scale=(0.60, 1.0), ratio=(1.0, 1.0)), 
+            transforms.Resize(42),  # 放大一点, CIFAR10的数据集是32, 放大到40, 可以给我们一点操作的空间, 让我能够有一些额外的操作.
+            transforms.RandomResizedCrop(32, scale=(0.60, 1.0), ratio=(1.0, 1.0)),
             transforms.RandomHorizontalFlip(),
             # transforms.ColorJitter(brightness=0.5, contrast=0.5, hue=0.5),
-            transforms.Normalize([0.4914, 0.4822, 0.4465], # normalize. 归一化. 
-                            [0.2023, 0.1994, 0.2010])
+            transforms.Normalize([0.4914, 0.4822, 0.4465],  # normalize. 归一化.
+                                 [0.2023, 0.1994, 0.2010])
         ])
         self.transform_test = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize([0.4914, 0.4822, 0.4465], # normalize. 归一化. 
-                        [0.2023, 0.1994, 0.2010])
+            transforms.Normalize([0.4914, 0.4822, 0.4465],  # normalize. 归一化.
+                                 [0.2023, 0.1994, 0.2010])
         ])
-
-
 
     def __getitem__(self, index):
         if self.is_train:
             file_name = self.file_name_list[index]
             label = self.classes.index(self.label_dict[file_name.split('.')[0]])
             img = self.transform_train(cv.imread(os.path.join(self.path, file_name)))
-            
+
             return img, label
         else:
             file_name = self.file_name_list[index]
@@ -320,48 +430,44 @@ class CIFAR10_datasets(Dataset):
     def __len__(self):
         return len(self.file_name_list)
 
-
     def is_current(self):
         print(self[0])
-    
 
     def parse_csv2label(self):
-            with open("./trainLabels.csv", "r") as f:
-                return {ele[0]:ele[1] for ele in [line.strip().split(',') for line in f.readlines()][1: ]}
-
-
+        with open("./trainLabels.csv", "r") as f:
+            return {ele[0]: ele[1] for ele in [line.strip().split(',') for line in f.readlines()][1:]}
 
 
 class CIFAR10_Train_Test(Dataset):
     def __init__(self, is_train=True) -> None:
         super().__init__()
-        self.is_train=is_train
+        self.is_train = is_train
         if self.is_train:
-            self.path = "./train"
+            self.path = "/home/wakinghours/data_fine/cifar-10/train"
         else:
-            self.path = "./test"
-            
-        self.label_dict = self.parse_csv2label() # return
+            self.path = "/home/wakinghours/data_fine/cifar-10/test"
+
+        self.label_dict = self.parse_csv2label()  # return
         self.classes = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 
         self.file_name_list = os.listdir(self.path)
 
         self.transform_train = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Resize(42), # 放大一点, CIFAR10的数据集是32, 放大到40, 可以给我们一点操作的空间, 让我能够有一些额外的操作. 
-            transforms.RandomResizedCrop(32, scale=(0.64, 1.0), ratio=(1.0, 1.0)), 
+            transforms.Resize(42, antialias=True),  # 放大一点, CIFAR10的数据集是32, 放大到40, 可以给我们一点操作的空间, 让我能够有一些额外的操作.
+            # antialias抗锯齿 = True. 
+            # if here have warning, than refer this blog: https://github.com/rasbt/machine-learning-book/discussions/115
+            transforms.RandomResizedCrop(32, scale=(0.64, 1.0), ratio=(1.0, 1.0), antialias=True),
             transforms.RandomHorizontalFlip(),
             # transforms.ColorJitter(brightness=0.5, contrast=0.5, hue=0.5),
-            transforms.Normalize([0.4914, 0.4822, 0.4465], # normalize. 归一化. 
-                            [0.2023, 0.1994, 0.2010])
+            transforms.Normalize([0.4914, 0.4822, 0.4465],  # normalize. 归一化.
+                                 [0.2023, 0.1994, 0.2010])
         ])
         self.transform_test = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize([0.4914, 0.4822, 0.4465], # normalize. 归一化. 
-                        [0.2023, 0.1994, 0.2010])
+            transforms.Normalize([0.4914, 0.4822, 0.4465],  # normalize. 归一化.
+                                 [0.2023, 0.1994, 0.2010])
         ])
-
-
 
     def __getitem__(self, index):
         file_name = self.file_name_list[index]
@@ -373,10 +479,8 @@ class CIFAR10_Train_Test(Dataset):
             img = self.transform_test(cv.imread(os.path.join(self.path, file_name)))
         return img, label
 
-
     def __len__(self):
         return len(self.file_name_list)
-
 
     def is_current(self):
         print(self[0])
@@ -388,23 +492,21 @@ class CIFAR10_Train_Test(Dataset):
             num_workers=num_workers,
             shuffle=True
         ), DataLoader(
-            CIFAR10_Train_Test( ),
+            CIFAR10_Train_Test(),
             batch_size=batch_size,
             shuffle=False,
             drop_last=False,
-            num_workers=num_workers, 
+            num_workers=num_workers,
         )
-
-    
 
     def parse_csv2label(self):
         if self.is_train:
             with open("./trainLabels.csv", "r") as f:
-                return {ele[0]:ele[1] for ele in [line.strip().split(',') for line in f.readlines()][1: ]}
+                return {ele[0]: ele[1] for ele in [line.strip().split(',') for line in f.readlines()][1:]}
         else:
             with open("./test_label.csv", "r") as f:
-                return {ele[0]:ele[1] for ele in [line.strip().split(',') for line in f.readlines()][1: ]}
-        
+                return {ele[0]: ele[1] for ele in [line.strip().split(',') for line in f.readlines()][1:]}
+
 
 if __name__ == '__main__':
     print(get_train_vaild_datasets())

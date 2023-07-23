@@ -1,8 +1,12 @@
 import torch
-from utils import  train_cifar10, test_to_submission, train, load_data_CIFAR10, CIFAR10_Train_Test
+from utils import  train_cifar10, test_to_submission, train, load_data_CIFAR10, CIFAR10_Train_Test,train_cos_ema
 from net import resnet18
+import os, sys
 
-BATCH_SIZE = 512
+os.chdir(sys.path[0])
+
+
+BATCH_SIZE = 2048
 EPOCH = 300
 LR = 2e-1
 
@@ -15,13 +19,23 @@ def main() -> None:
 
     # train_cifar10(net, LR, BATCH_SIZE, EPOCH)
 
-    train(
+    
+    train_cos_ema(
         net,
         torch.nn.CrossEntropyLoss(),
-        train_iter, test_iter, 
-        LR, EPOCH, 10, 0.95, 5e-3,   
-        # load_path="logs/epoch200_testacc0.85_loss0.33_acc0.89.pth" 
+        train_iter, test_iter,
+        LR, EPOCH
     )
+    
+    
+    
+    # train(
+    #     net,
+    #     torch.nn.CrossEntropyLoss(),
+    #     train_iter, test_iter, 
+    #     LR, EPOCH, 10, 0.95, 5e-3,   
+    #     # load_path="logs/epoch200_testacc0.85_loss0.33_acc0.89.pth" 
+    # )
 
 
     test_to_submission(net)
