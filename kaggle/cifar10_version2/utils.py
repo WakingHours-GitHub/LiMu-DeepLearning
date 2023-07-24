@@ -7,7 +7,7 @@ import cv2 as cv
 import os
 import sys
 from typing import List
-
+import math
 
 os.chdir(sys.path[0])
 join = os.path.join
@@ -17,6 +17,91 @@ def try_all_gpus() -> List[torch.device]:
     devices = [torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())]
     return devices if devices else torch.device("cpu")
 
+
+
+
+
+
+class Accumulator():
+    def __init__(self, n) -> None:
+        self.data = [0.0] * n  # 初始化
+
+    def add(self, *args):
+        self.data = [a + float(b) for a, b in zip(self.data, args)]
+
+    def reset(self):
+        self.data = [0.0] * len(self.data)
+
+    def __getitem__(self, idx):
+        return self.data[idx]
+    
+    
+    
+    
+    
+def accuracy(y_hat: torch.Tensor, y: torch.Tensor) -> float:
+    if len(y_hat.shape) > 1 and y_hat.shape[1] > 1:  # 二维, 并且列数要大于1.
+        y_hat = y_hat.argmax(dim=1)  # 返回指定轴上值最大的索引. 这里是按照行为单位, 所以dim=1
+    cmp = y_hat.type(y.dtype) == y # 转换为同一种类型.
+    return float(cmp.type(y.dtype).sum()) # 这里求和. 所以需要在外面减去. 
+    # 因为我们不知道这一批量具体是多少, 所以我们在Accumulate中进行计算精度的操作. 
+
+def train_cos(
+    net: nn.Module, loss_fn: nn.Module,
+    train_iter: DataLoader, test_iter: DataLoader,
+    lr, num_epoch,
+    momentum=0.937, weight_decay=5e-4,
+    load_path: str = None, devices=try_all_gpus(),
+):
+    eps = 0.35
+    net = nn.DataParallel(net, devices).to(devices[0])
+    loss_fn.to(devices[0])
+    if load_path:
+        print("load net parameters: ", load_path)
+        net.load_state_dict(torch.load(load_path))  # load parameters for net module.
+    trainer = torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
+    def lf(x): return ((1 + math.cos(x * math.pi / num_epoch)) / 2) * (1 - eps) + eps
+    scheduler = optim.lr_scheduler.LambdaLR(
+        optimizer=trainer,  # 优化器.
+        lr_lambda=lf,  # 学习率函数.
+    )  # 根据lambda自定义学习率.
+
+    metric = Accumulator(3)
+    trainer.zero_grad()  # empty.
+    # train:
+    print("train on:", devices)
+    for epoch in range(num_epoch):
+        net.train()
+        metric.reset()  # 重置
+        # train a epoch.
+        for i, (x, labels) in enumerate(train_iter):
+            x, labels = x.to(devices[0]), labels.to(devices[0])
+            y_hat = net(x)
+            loss = loss_fn(y_hat, labels)
+
+            trainer.zero_grad()  # first empty gradient
+            loss.sum().backward()  # than calculate graient by backwoard (pro)
+            trainer.step()  # update weight.
+
+            metric.add(loss.item(), accuracy(y_hat, labels), labels.shape[0])
+
+        scheduler.step()  # we only update scheduler.
+
+        # evaluate
+        if (epoch + 1) % 10 == 0:
+            test_accuracy = evaluate_test_with_GPUS(net, test_iter)
+            print(epoch + 1, "test acc:", test_accuracy, "train loss:",
+                  metric[0] / metric[-1], "train acc:", metric[1] / metric[-1])
+
+            try:
+                torch.save(
+                    net.state_dict(),
+                    f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+            except BaseException:
+                os.mkdir("./logs")
+                torch.save(
+                    net.state_dict(),
+                    f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
 
 
 
