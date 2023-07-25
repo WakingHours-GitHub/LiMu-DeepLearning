@@ -21,7 +21,7 @@ class CBAP(nn.Module): # Conv2d BatchNorm2d, Activate, MaxPool
 class VanillaNet(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        self.conv4x4 = CBAP(3, 64, 3, 1)
+        self.conv4x4 = CBAP(3, 64, 5, 1)
         # self.conv4x4_2 = CBAP(32, 64, 3, 1)
         # self.act1 = activation(32)
         self.conv1_1 = CBAP(64, 128, 1, 1, 0, pooling=True)
@@ -39,7 +39,7 @@ class VanillaNet(nn.Module):
         self.apply(self.init_net)
         
     def forward(self, x):
-        y = self.conv1_2(self.conv1_1(self.conv4x4_2(self.conv4x4(x))))
+        x = self.conv1_2(self.conv1_1(self.conv4x4(x)))
         # x = x + y
         x = self.global_pooling(x)
         x = self.flatten(x)

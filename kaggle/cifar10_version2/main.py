@@ -22,6 +22,7 @@ def test_ema_with_cos() -> None:
         net, nn.CrossEntropyLoss(),
         train_iter, val_iter,
         lr, num_epoch, 
+        save_mode="best", test_epoch=1
         # load_path="logs/epoch230_testacc0.739_loss0.0028_acc0.75.pth"
     )
 

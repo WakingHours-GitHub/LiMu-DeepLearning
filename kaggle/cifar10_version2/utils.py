@@ -97,13 +97,17 @@ def train_cos_ema(
     train_iter: DataLoader, test_iter: DataLoader,
     lr, num_epoch,
     momentum=0.937, weight_decay=5e-4,
-    load_path: str = None, save_mode: str = "epoch", devices=try_all_gpus(),
+    load_path: str = None, save_mode: str = "epoch", test_epoch:int=10, 
+    devices=try_all_gpus(),
 ):
+    assert save_mode in ("epoch", "best"), "[ERROR]: save_mode must be is epoch or best"
     eps = 0.35
     net = nn.DataParallel(net, devices).to(devices[0])
 
     ema = EMA(net, 0.999)
     ema.register()  # 注册.
+    
+    best_test_accuracy = 0
 
     loss_fn.to(devices[0])
     if load_path:
@@ -120,6 +124,7 @@ def train_cos_ema(
     trainer.zero_grad()  # empty.
     # train:
     print("train on:", devices)
+    print("save mode: ", save_mode)
     for epoch in range(num_epoch):
         net.train()
         metric.reset()  # 重置
@@ -139,21 +144,29 @@ def train_cos_ema(
         scheduler.step()  # we only update scheduler.
 
         # evaluate
-        if (epoch + 1) % 10 == 0:
+        if (epoch + 1) % test_epoch == 0:
             test_accuracy = evaluate_test_with_GPUS_ema(ema, net, test_iter)
+                        
             print(epoch + 1, "test acc:", test_accuracy, "train loss:",
                   metric[0] / metric[-1], "train acc:", metric[1] / metric[-1])
-
-            try:
-                torch.save(
-                    net.state_dict(),
-                    f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
-            except BaseException:
-                os.mkdir("./logs")
-                torch.save(
-                    net.state_dict(),
-                    f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
-
+            if save_mode == "epoch":
+                try:
+                    torch.save(
+                        net.state_dict(),
+                        f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                except BaseException as e:
+                    os.mkdir("./logs")
+                    torch.save(
+                        net.state_dict(),
+                        f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+            elif save_mode == "best":
+                if best_test_accuracy < test_accuracy:
+                    try:
+                        torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                    except BaseException as e:
+                        os.mkdir("./logs")
+                        torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                        
 
 def load_data_CIFAR10(batch_size, num_workers=14):
     # 我自己编写的CIFAR10 datasets也可以正常使用
