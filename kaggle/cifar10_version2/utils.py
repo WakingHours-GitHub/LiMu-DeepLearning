@@ -1,6 +1,7 @@
 import torch
 import torchvision
 from torchvision import transforms
+from torchsummary import summary
 from torch import nn, optim
 from torch.utils.data import Dataset, DataLoader, random_split  # 导入工具。
 import cv2 as cv
@@ -8,6 +9,8 @@ import os
 import sys
 from typing import List
 import math
+import pandas as pd
+
 
 os.chdir(sys.path[0])
 join = os.path.join
@@ -30,6 +33,48 @@ class Accumulator():
 
     def __getitem__(self, idx):
         return self.data[idx]
+
+
+
+def test_to_submission(net: nn.Module, load_path: str = None, devices=try_all_gpus()):
+    net = nn.DataParallel(net, devices).to(devices[0])  # 如果训练时, 我们使用了DataParallel, 那么在测试时, 我们也一定要使用.
+    # 然后才能load参数.
+    net.load_state_dict(torch.load(load_path))
+
+    sorted_ids, preds = [], []
+
+    datasets = CIFAR10_datasets(is_train=False)
+    # print(datasets.__len__())
+    test_iter = DataLoader(
+        datasets,
+        5000,
+        False,
+        num_workers=14,
+        drop_last=False,
+    )
+    print(len(test_iter))
+
+    for i, (X, file_name) in enumerate(test_iter):
+        # print(file_name)
+        print(i)
+        y_hat = net(X.to(devices[0]))
+        sorted_ids.extend([int(i) for i in file_name])
+        preds.extend(
+            y_hat.argmax(dim=1).type(torch.int32).cpu().numpy()
+        )
+        # break
+
+
+    # print(sorted_ids)
+
+    sorted_cord = sorted(zip(sorted_ids, preds), key=lambda x: x[0])
+    result = zip(*sorted_cord)
+    sorted_ids, preds = [list(x) for x in result]
+
+    df = pd.DataFrame({'id': sorted_ids, 'label': preds})
+    df['label'] = df['label'].apply(lambda x: datasets.classes[x])
+    df.to_csv('./submission.csv', index=False)
+
 
 
 def evaluate_test_with_GPUS_ema(ema, net: nn.Module, test_iter) -> float:
@@ -101,6 +146,7 @@ def train_cos_ema(
     devices=try_all_gpus(),
 ):
     assert save_mode in ("epoch", "best"), "[ERROR]: save_mode must be is epoch or best"
+    
     eps = 0.35
     net = nn.DataParallel(net, devices).to(devices[0])
 
@@ -113,16 +159,22 @@ def train_cos_ema(
     if load_path:
         print("load net parameters: ", load_path)
         net.load_state_dict(torch.load(load_path))  # load parameters for net module.
-    trainer = torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
+    optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
+    
+    # from EfficientNet.
+    # optimizer = torch.optim.RMSprop(net.parameters(), lr=lr, alpha=0.99, eps=1e-8, weight_decay=0.9, momentum=0.9)
     def lf(x): return ((1 + math.cos(x * math.pi / num_epoch)) / 2) * (1 - eps) + eps
     scheduler = optim.lr_scheduler.LambdaLR(
-        optimizer=trainer,  # 优化器.
+        optimizer=optimizer,  # 优化器.
         lr_lambda=lf,  # 学习率函数.
     )  # 根据lambda自定义学习率.
 
     metric = Accumulator(3)
-    trainer.zero_grad()  # empty.
+    optimizer.zero_grad()  # empty.
+    
     # train:
+    # print(next(iter(train_iter))[0].shape[1: ])
+    summary(net, input_size=next(iter(train_iter))[0].shape[1: ])
     print("train on:", devices)
     print("save mode: ", save_mode)
     for epoch in range(num_epoch):
@@ -134,9 +186,9 @@ def train_cos_ema(
             y_hat = net(x)
             loss = loss_fn(y_hat, labels)
 
-            trainer.zero_grad()  # first empty gradient
+            optimizer.zero_grad()  # first empty gradient
             loss.sum().backward()  # than calculate graient by backwoard (pro)
-            trainer.step()  # update weight.
+            optimizer.step()  # update weight.
             ema.update()
 
             metric.add(loss.item(), accuracy(y_hat, labels), labels.shape[0])
@@ -145,8 +197,10 @@ def train_cos_ema(
 
         # evaluate
         if (epoch + 1) % test_epoch == 0:
-            test_accuracy = evaluate_test_with_GPUS_ema(ema, net, test_iter)
-                        
+            if test_iter != None:
+                test_accuracy = evaluate_test_with_GPUS_ema(ema, net, test_iter)
+            else: # test_iter = None. 
+                test_accuracy = 0.0
             print(epoch + 1, "test acc:", test_accuracy, "train loss:",
                   metric[0] / metric[-1], "train acc:", metric[1] / metric[-1])
             if save_mode == "epoch":
@@ -155,12 +209,15 @@ def train_cos_ema(
                         net.state_dict(),
                         f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
                 except BaseException as e:
+                    print(e)
                     os.mkdir("./logs")
                     torch.save(
                         net.state_dict(),
                         f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
             elif save_mode == "best":
                 if best_test_accuracy < test_accuracy:
+                    best_test_accuracy = test_accuracy  # update current.
+                    print("best: ", test_accuracy)
                     try:
                         torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
                     except BaseException as e:
@@ -170,7 +227,7 @@ def train_cos_ema(
 
 def load_data_CIFAR10(batch_size, num_workers=14):
     # 我自己编写的CIFAR10 datasets也可以正常使用
-    train_datasets, test_datasets = get_train_vaild_datasets()
+    train_datasets, test_datasets = get_train_vaild_datasets(vaild_rate=0)
 
     train_iter, test_iter = DataLoader(train_datasets, batch_size, True, num_workers=num_workers, drop_last=True), \
         DataLoader(test_datasets, batch_size, True, num_workers=num_workers, drop_last=False)
@@ -195,7 +252,7 @@ class CIFAR10_datasets(Dataset):
             self.path = join(self.root_path, "train")
             self.transforme = transforms.Compose([
                 transforms.ToTensor(),
-                transforms.Resize(42, antialias=True),
+                transforms.Resize(40, antialias=True),
                 transforms.RandomResizedCrop(32, scale=(0.60, 1.0), ratio=(1.0, 1.0), antialias=True),
                 transforms.RandomHorizontalFlip(),
                 transforms.ColorJitter(brightness=0.5, contrast=0.5, hue=0.5),
@@ -223,7 +280,7 @@ class CIFAR10_datasets(Dataset):
             label = self.labels_list[int(file_name.split(".")[0])]
             label = self.classes.index(label)
         else:
-            label = None
+            label = file_name.split(".")[0]
 
         return img, label
 
