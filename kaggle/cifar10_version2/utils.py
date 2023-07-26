@@ -10,7 +10,7 @@ import sys
 from typing import List
 import math
 import pandas as pd
-
+import random
 
 os.chdir(sys.path[0])
 join = os.path.join
@@ -47,9 +47,9 @@ def test_to_submission(net: nn.Module, load_path: str = None, devices=try_all_gp
     # print(datasets.__len__())
     test_iter = DataLoader(
         datasets,
-        5000,
+        32,
         False,
-        num_workers=14,
+        num_workers=5,
         drop_last=False,
     )
     print(len(test_iter))
@@ -77,10 +77,11 @@ def test_to_submission(net: nn.Module, load_path: str = None, devices=try_all_gp
 
 
 
-def evaluate_test_with_GPUS_ema(ema, net: nn.Module, test_iter) -> float:
+def evaluate_test_with_gpus_ema(ema, net: nn.Module, test_iter) -> float:
     if isinstance(net, nn.Module):
-        net.eval()  # set module on evaluation mode
         ema.apply_shadow()
+        # 
+        net.eval()  # set module on evaluation mode
 
     device = next(iter(net.parameters())).device  # 拿出来一个参数的device
     matrix = Accumulator(2)
@@ -198,7 +199,7 @@ def train_cos_ema(
         # evaluate
         if (epoch + 1) % test_epoch == 0:
             if test_iter != None:
-                test_accuracy = evaluate_test_with_GPUS_ema(ema, net, test_iter)
+                test_accuracy = evaluate_test_with_gpus_ema(ema, net, test_iter)
             else: # test_iter = None. 
                 test_accuracy = 0.0
             print(epoch + 1, "test acc:", test_accuracy, "train loss:",
@@ -235,12 +236,92 @@ def load_data_CIFAR10(batch_size, num_workers=14):
     return train_iter, test_iter
 
 
-def get_train_vaild_datasets(vaild_rate=0.1):
-    train_datasets = CIFAR10_datasets()
-    len = train_datasets.__len__()
+def get_train_vaild_datasets(batch_size, num_workers=14):
+    train_datasets = train_val_cifar10()
+    val_datasets = train_val_cifar10(is_train=False)
+    
+    train_iter = DataLoader(train_datasets, batch_size, True, num_workers=num_workers, drop_last=False)
+    val_iter = DataLoader(val_datasets, batch_size, False, num_workers=num_workers, drop_last=False)
+    
+    return train_iter, val_iter
+    
+    
+    
 
-    return random_split(train_datasets, [int(len - len * vaild_rate), int(len * vaild_rate)])
 
+
+
+class train_val_cifar10(Dataset):
+    def __init__(self, is_train=True) -> None:
+        super().__init__()
+        self.data_path = "./cifar_data"
+        self.is_train = is_train
+        if self.is_train:
+            self.path = "train.txt"
+            self.transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Resize(256, antialias=True),
+                transforms.RandomResizedCrop(224, scale=(0.60, 1.0), ratio=(1.0, 1.0), antialias=True),
+                transforms.RandomHorizontalFlip(),
+                transforms.ColorJitter(brightness=0.5, contrast=0.5, hue=0.5),
+                transforms.Normalize([0.4914, 0.4822, 0.4465],  # normalize. 归一化.
+                                     [0.2023, 0.1994, 0.2010])
+            ])
+        else:
+            self.path = "val.txt"
+            self.transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Resize(224, antialias=True),
+                
+                transforms.Normalize([0.4914, 0.4822, 0.4465],  # normalize. 归一化.
+                                     [0.2023, 0.1994, 0.2010])
+            ])
+        self.labels_list = self.parse_csv2label()
+        self.classes = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+        with open(self.path, "r") as f:
+            self.file_name_list = [line.strip() for line in f.readlines()]
+        # print(self.file_name_list[0])
+        
+        
+    def __getitem__(self, index):
+        file_name:str = self.file_name_list[index]
+        img = self.transform(cv.imread(join(self.path, file_name)))
+        file_name = file_name[file_name.rfind("/")+1: file_name.rfind(".")]
+        # print(file_name)
+        label = self.labels_list[int(file_name)]
+        label = self.classes.index(label)
+        
+        return img, label
+
+    def __len__(self):
+        return len(self.file_name_list)
+        
+        
+              
+    
+    def parse_csv2label(self):
+        with open(join(self.data_path, "trainLabels.csv"), "r") as f:
+            # return {ele[0]: ele[1] for ele in [line.strip().split(',') for line in f.readlines()]}
+            return [ele[1] for ele in [line.strip().split(',') for line in f.readlines()]]
+
+def gen_cifar10_train_val_text(datasets_path:str, val_rate: float = 0.1) -> None:
+    pwd = os.getcwd()
+    train_file_path = join(datasets_path, "train")
+    file_name_list = os.listdir(train_file_path)
+    totle_len = len(file_name_list)
+    random.shuffle(file_name_list)
+    train_list = [join(pwd, datasets_path, "train", file_name) for file_name in file_name_list[0: int(totle_len * (1 - val_rate))]]
+    val_list = [join(pwd, datasets_path, "train", file_name) for file_name in file_name_list[int(totle_len * (1 - val_rate)): ]]
+    # train_file_name_list = random.sample(file_name_list, int(totle_len * (1 - val_rate)))
+    
+    with open("./train.txt", "w") as f:
+        f.write("\n".join(train_list))
+    with open("./val.txt", "w") as f:
+        f.write("\n".join(val_list))
+    print("generate done!")
+    
+    
+    
 
 class CIFAR10_datasets(Dataset):
     def __init__(self, is_train=True) -> None:
@@ -252,8 +333,8 @@ class CIFAR10_datasets(Dataset):
             self.path = join(self.root_path, "train")
             self.transforme = transforms.Compose([
                 transforms.ToTensor(),
-                transforms.Resize(40, antialias=True),
-                transforms.RandomResizedCrop(32, scale=(0.60, 1.0), ratio=(1.0, 1.0), antialias=True),
+                transforms.Resize(256, antialias=True),
+                transforms.RandomResizedCrop(224, scale=(0.60, 1.0), ratio=(1.0, 1.0), antialias=True),
                 transforms.RandomHorizontalFlip(),
                 transforms.ColorJitter(brightness=0.5, contrast=0.5, hue=0.5),
                 transforms.Normalize([0.4914, 0.4822, 0.4465],  # normalize. 归一化.
@@ -263,6 +344,8 @@ class CIFAR10_datasets(Dataset):
             self.path = join(self.root_path, "test")
             self.transforme = transforms.Compose([
                 transforms.ToTensor(),
+                transforms.Resize(224, antialias=True),
+                
                 transforms.Normalize([0.4914, 0.4822, 0.4465],  # normalize. 归一化.
                                      [0.2023, 0.1994, 0.2010])
             ])
@@ -280,7 +363,7 @@ class CIFAR10_datasets(Dataset):
             label = self.labels_list[int(file_name.split(".")[0])]
             label = self.classes.index(label)
         else:
-            label = file_name.split(".")[0]
+            label = file_name.split(".")[0] # return file name.
 
         return img, label
 
@@ -294,14 +377,20 @@ class CIFAR10_datasets(Dataset):
 
 
 if __name__ == "__main__":
-    train, val = get_train_vaild_datasets()
-    print(train[0])
-    print(train.__len__())
-    print(val.__len__())
+    # gen_cifar10_train_val_text("cifar_data")
+    
+    print(train_val_cifar10(is_train=False)[0])
+    # get_train_vaild_datasets
+    train, val = get_train_vaild_datasets(1)
+    # print(train)
+    # # print(train.__len__())
+    # # print(val.__len__())
+    
+    # print(iter(val).__next__())
     
     
-    train, val = load_data_CIFAR10(20)
-    for x, labels in train:
-        print(x.shape)
-        print(labels)
-        break
+    # train, val = load_data_CIFAR10(20)
+    # for x, labels in train:
+    #     print(x.shape)
+    #     print(labels)
+    #     break
