@@ -12,15 +12,15 @@ import os, sys
 os.chdir(sys.path[0])
 
 
-batch_size = 64
-lr = 0.1
+batch_size = 512
+lr = 0.05
 num_epoch = 300
 
 def test_ema_with_cos() -> None:
     # train_iter, val_iter = load_data_CIFAR10(batch_size)
     
     train_iter = DataLoader(
-        CIFAR10_datasets(), batch_size, True, num_workers=6
+        CIFAR10_datasets(), batch_size, True, num_workers=4
     )
     
     # net = VanillaNet()
@@ -39,7 +39,7 @@ def test_submission() -> None:
     
     test_to_submission(
         net, 
-        "/home/wakinghours/programming/LiMu-DeepLearning/kaggle/cifar10_version2/logs/epoch25_testacc 0.0_loss0.016_acc0.64.pth"
+        "/home/wakinghours/programming/LiMu-DeepLearning/kaggle/cifar10_version2/logs/epoch221_testacc 0.0_loss0.0031_acc0.73.pth"
     )
 
 
