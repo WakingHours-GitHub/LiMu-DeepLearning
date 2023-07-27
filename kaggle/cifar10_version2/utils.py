@@ -11,6 +11,10 @@ from typing import List
 import math
 import pandas as pd
 import random
+from torch.utils.tensorboard import SummaryWriter
+
+writer = SummaryWriter("./events")
+
 
 os.chdir(sys.path[0])
 join = os.path.join
@@ -34,7 +38,22 @@ class Accumulator():
     def __getitem__(self, idx):
         return self.data[idx]
 
-
+def manage_logs_dir(root_dir:str = "./runs") -> str:
+    if not os.path.exists(root_dir):
+        os.mkdir(root_dir)
+    dir_list = os.listdir(root_dir)
+    if  len(dir_list) == 0:
+        os.mkdir(join(root_dir, "exp"))
+        
+    dir_list.sort()
+    last_exp_dir = join(root_dir, "exp"+str(int(dir_list[-1][3: ])+1))
+    os.mkdir(last_exp_dir)
+    
+    return last_exp_dir
+    
+    
+    
+    
 
 def test_to_submission(net: nn.Module, load_path: str = None, devices=try_all_gpus()):
     net = nn.DataParallel(net, devices).to(devices[0])  # 如果训练时, 我们使用了DataParallel, 那么在测试时, 我们也一定要使用.
@@ -47,9 +66,9 @@ def test_to_submission(net: nn.Module, load_path: str = None, devices=try_all_gp
     # print(datasets.__len__())
     test_iter = DataLoader(
         datasets,
-        32,
+        100,
         False,
-        num_workers=5,
+        num_workers=14,
         drop_last=False,
     )
     print(len(test_iter))
@@ -64,7 +83,6 @@ def test_to_submission(net: nn.Module, load_path: str = None, devices=try_all_gp
         )
         # break
 
-
     # print(sorted_ids)
 
     sorted_cord = sorted(zip(sorted_ids, preds), key=lambda x: x[0])
@@ -74,26 +92,6 @@ def test_to_submission(net: nn.Module, load_path: str = None, devices=try_all_gp
     df = pd.DataFrame({'id': sorted_ids, 'label': preds})
     df['label'] = df['label'].apply(lambda x: datasets.classes[x])
     df.to_csv('./submission.csv', index=False)
-
-
-
-def evaluate_test_with_gpus_ema(ema, net: nn.Module, test_iter) -> float:
-    if isinstance(net, nn.Module):
-        ema.apply_shadow()
-        # 
-        net.eval()  # set module on evaluation mode
-
-    device = next(iter(net.parameters())).device  # 拿出来一个参数的device
-    matrix = Accumulator(2)
-    with torch.no_grad():
-        for X, labels in test_iter:
-            X, labels = X.to(device), labels.to(device)
-            matrix.add(accuracy(net(X), labels), labels.shape[0])
-            # print(net(X).shape)
-            # matrix.add(accuracy(net(X), labels), 1)  # here, accuracy use 'sum()', so add BS.
-            # here, accuracy used 'mean()' so, add 1.
-    ema.restore()
-    return matrix[0] / matrix[1]  # 均值.
 
 
 class EMA():
@@ -130,6 +128,24 @@ class EMA():
         self.backup = {}
 
 
+def evaluate_test_with_gpus_ema(ema: EMA, net: nn.Module, test_iter) -> float:
+    if isinstance(net, nn.Module):
+        # ema.apply_shadow()
+        net.eval()  # set module on evaluation mode
+
+    device = next(iter(net.parameters())).device  # 拿出来一个参数的device
+    matrix = Accumulator(2)
+    with torch.no_grad():
+        for X, labels in test_iter:
+            X, labels = X.to(device), labels.to(device)
+            matrix.add(accuracy(net(X), labels), labels.shape[0])
+            # print(net(X).shape)
+            # matrix.add(accuracy(net(X), labels), 1)  # here, accuracy use 'sum()', so add BS.
+            # here, accuracy used 'mean()' so, add 1.
+    # ema.restore()
+    return matrix[0] / matrix[1]  # 均值.
+
+
 def accuracy(y_hat: torch.Tensor, y: torch.Tensor) -> float:
     if len(y_hat.shape) > 1 and y_hat.shape[1] > 1:  # 二维, 并且列数要大于1.
         y_hat = y_hat.argmax(dim=1)  # 返回指定轴上值最大的索引. 这里是按照行为单位, 所以dim=1
@@ -143,17 +159,17 @@ def train_cos_ema(
     train_iter: DataLoader, test_iter: DataLoader,
     lr, num_epoch,
     momentum=0.937, weight_decay=5e-4,
-    load_path: str = None, save_mode: str = "epoch", test_epoch:int=10, 
+    load_path: str = None, save_mode: str = "epoch", test_epoch: int = 10,
     devices=try_all_gpus(),
 ):
     assert save_mode in ("epoch", "best"), "[ERROR]: save_mode must be is epoch or best"
-    
+
     eps = 0.35
     net = nn.DataParallel(net, devices).to(devices[0])
 
     ema = EMA(net, 0.999)
     ema.register()  # 注册.
-    
+
     best_test_accuracy = 0
 
     loss_fn.to(devices[0])
@@ -161,7 +177,7 @@ def train_cos_ema(
         print("load net parameters: ", load_path)
         net.load_state_dict(torch.load(load_path))  # load parameters for net module.
     optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
-    
+
     # from EfficientNet.
     # optimizer = torch.optim.RMSprop(net.parameters(), lr=lr, alpha=0.99, eps=1e-8, weight_decay=0.9, momentum=0.9)
     def lf(x): return ((1 + math.cos(x * math.pi / num_epoch)) / 2) * (1 - eps) + eps
@@ -172,10 +188,10 @@ def train_cos_ema(
 
     metric = Accumulator(3)
     optimizer.zero_grad()  # empty.
-    
+
     # train:
     # print(next(iter(train_iter))[0].shape[1: ])
-    summary(net, input_size=next(iter(train_iter))[0].shape[1: ])
+    summary(net, input_size=next(iter(train_iter))[0].shape[1:])
     print("train on:", devices)
     print("save mode: ", save_mode)
     for epoch in range(num_epoch):
@@ -198,9 +214,9 @@ def train_cos_ema(
 
         # evaluate
         if (epoch + 1) % test_epoch == 0:
-            if test_iter != None:
+            if test_iter is not None:
                 test_accuracy = evaluate_test_with_gpus_ema(ema, net, test_iter)
-            else: # test_iter = None. 
+            else:  # test_iter = None.
                 test_accuracy = 0.0
             print(epoch + 1, "test acc:", test_accuracy, "train loss:",
                   metric[0] / metric[-1], "train acc:", metric[1] / metric[-1])
@@ -220,11 +236,24 @@ def train_cos_ema(
                     best_test_accuracy = test_accuracy  # update current.
                     print("best: ", test_accuracy)
                     try:
-                        torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                        torch.save(
+                            net.state_dict(),
+                            f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
                     except BaseException as e:
                         os.mkdir("./logs")
-                        torch.save(net.state_dict(), f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
-                        
+                        torch.save(
+                            net.state_dict(),
+                            f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+
+        # Tensorboard: writer.
+        writer.add_scalars("train",
+                           {
+                               "train_loss": metric[0] / metric[-1],
+                               "train_acc": metric[1] / metric[-1],
+                               "test_acc": test_accuracy
+                           }, 
+                           epoch)
+
 
 def load_data_CIFAR10(batch_size, num_workers=14):
     # 我自己编写的CIFAR10 datasets也可以正常使用
@@ -239,16 +268,11 @@ def load_data_CIFAR10(batch_size, num_workers=14):
 def get_train_vaild_datasets(batch_size, num_workers=14):
     train_datasets = train_val_cifar10()
     val_datasets = train_val_cifar10(is_train=False)
-    
+
     train_iter = DataLoader(train_datasets, batch_size, True, num_workers=num_workers, drop_last=False)
     val_iter = DataLoader(val_datasets, batch_size, False, num_workers=num_workers, drop_last=False)
-    
+
     return train_iter, val_iter
-    
-    
-    
-
-
 
 
 class train_val_cifar10(Dataset):
@@ -272,7 +296,7 @@ class train_val_cifar10(Dataset):
             self.transform = transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Resize(224, antialias=True),
-                
+
                 transforms.Normalize([0.4914, 0.4822, 0.4465],  # normalize. 归一化.
                                      [0.2023, 0.1994, 0.2010])
             ])
@@ -281,47 +305,44 @@ class train_val_cifar10(Dataset):
         with open(self.path, "r") as f:
             self.file_name_list = [line.strip() for line in f.readlines()]
         # print(self.file_name_list[0])
-        
-        
+
     def __getitem__(self, index):
-        file_name:str = self.file_name_list[index]
+        file_name: str = self.file_name_list[index]
         img = self.transform(cv.imread(join(self.path, file_name)))
-        file_name = file_name[file_name.rfind("/")+1: file_name.rfind(".")]
+        file_name = file_name[file_name.rfind("/") + 1: file_name.rfind(".")]
         # print(file_name)
         label = self.labels_list[int(file_name)]
         label = self.classes.index(label)
-        
+
         return img, label
 
     def __len__(self):
         return len(self.file_name_list)
-        
-        
-              
-    
+
     def parse_csv2label(self):
         with open(join(self.data_path, "trainLabels.csv"), "r") as f:
             # return {ele[0]: ele[1] for ele in [line.strip().split(',') for line in f.readlines()]}
             return [ele[1] for ele in [line.strip().split(',') for line in f.readlines()]]
 
-def gen_cifar10_train_val_text(datasets_path:str, val_rate: float = 0.1) -> None:
+
+def gen_cifar10_train_val_text(datasets_path: str, val_rate: float = 0.1) -> None:
     pwd = os.getcwd()
     train_file_path = join(datasets_path, "train")
     file_name_list = os.listdir(train_file_path)
     totle_len = len(file_name_list)
     random.shuffle(file_name_list)
-    train_list = [join(pwd, datasets_path, "train", file_name) for file_name in file_name_list[0: int(totle_len * (1 - val_rate))]]
-    val_list = [join(pwd, datasets_path, "train", file_name) for file_name in file_name_list[int(totle_len * (1 - val_rate)): ]]
+    train_list = [join(pwd, datasets_path, "train", file_name)
+                  for file_name in file_name_list[0: int(totle_len * (1 - val_rate))]]
+    val_list = [join(pwd, datasets_path, "train", file_name)
+                for file_name in file_name_list[int(totle_len * (1 - val_rate)):]]
     # train_file_name_list = random.sample(file_name_list, int(totle_len * (1 - val_rate)))
-    
+
     with open("./train.txt", "w") as f:
         f.write("\n".join(train_list))
     with open("./val.txt", "w") as f:
         f.write("\n".join(val_list))
     print("generate done!")
-    
-    
-    
+
 
 class CIFAR10_datasets(Dataset):
     def __init__(self, is_train=True) -> None:
@@ -345,7 +366,7 @@ class CIFAR10_datasets(Dataset):
             self.transforme = transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Resize(224, antialias=True),
-                
+
                 transforms.Normalize([0.4914, 0.4822, 0.4465],  # normalize. 归一化.
                                      [0.2023, 0.1994, 0.2010])
             ])
@@ -363,7 +384,7 @@ class CIFAR10_datasets(Dataset):
             label = self.labels_list[int(file_name.split(".")[0])]
             label = self.classes.index(label)
         else:
-            label = file_name.split(".")[0] # return file name.
+            label = file_name.split(".")[0]  # return file name.
 
         return img, label
 
@@ -378,17 +399,16 @@ class CIFAR10_datasets(Dataset):
 
 if __name__ == "__main__":
     # gen_cifar10_train_val_text("cifar_data")
-    
-    print(train_val_cifar10(is_train=False)[0])
+    manage_logs_dir()
+    # print(train_val_cifar10(is_train=False)[0])
     # get_train_vaild_datasets
-    train, val = get_train_vaild_datasets(1)
+    # train, val = get_train_vaild_datasets(1)
     # print(train)
     # # print(train.__len__())
     # # print(val.__len__())
-    
+
     # print(iter(val).__next__())
-    
-    
+
     # train, val = load_data_CIFAR10(20)
     # for x, labels in train:
     #     print(x.shape)

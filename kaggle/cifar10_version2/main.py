@@ -16,7 +16,7 @@ os.chdir(sys.path[0])
 
 batch_size = 64
 lr = 0.02
-num_epoch = 40
+num_epoch = 100
 
 def test_ema_with_cos() -> None:
     # train_iter, val_iter = load_data_CIFAR10(batch_size)
@@ -26,18 +26,18 @@ def test_ema_with_cos() -> None:
     )
     
     # net = VanillaNet()
-    net = efficientnet_b3(10)
+    net = efficientnet_b0(10)
     train_cos_ema(
         net, nn.CrossEntropyLoss(),
         train_iter, None,
         lr, num_epoch, 
         save_mode="epoch", test_epoch=1, 
-        # load_path="/home/wakinghours/programming/LiMu-DeepLearning/kaggle/cifar10_version2/logs/epoch70_testacc 0.0_loss0.011_acc0.76.pth"
+        load_path="/home/wakinghours/programming/LiMu-DeepLearning/kaggle/cifar10_version2/logs_224_100/epoch90_testacc0.899_loss0.0048_acc0.9.pth"
     )
     
 def train_val_with_cos() -> None:
-    # gen_cifar10_train_val_text("cifar_data")
-    train_iter, val_iter = get_train_vaild_datasets(batch_size, num_workers=5)
+       # gen_cifar10_train_val_text("cifar_data")
+    train_iter, val_iter = get_train_vaild_datasets(batch_size, num_workers=10)
     
     net = efficientnet_b0(10)
     train_cos_ema(
@@ -45,20 +45,24 @@ def train_val_with_cos() -> None:
         train_iter,  val_iter,
         lr, num_epoch, 
         save_mode="best", test_epoch=1, 
-        # load_path="/home/wakinghours/programming/LiMu-DeepLearning/kaggle/cifar10_version2/logs/epoch70_testacc 0.0_loss0.011_acc0.76.pth"
+        load_path="/home/wakinghours/programming/LiMu-DeepLearning/kaggle/cifar10_version2/logs/epoch38_testacc0.874_loss0.006_acc0.87.pth"
     )
 
 
 def test_submission() -> None:
-    net = efficientnet_b3(10)
+    net = efficientnet_b0(10)
     
     test_to_submission(
         net, 
-        "/home/wakinghours/programming/LiMu-DeepLearning/kaggle/cifar10_version2/logs/epoch17_testacc 0.0_loss0.0093_acc0.8.pth"
+        "/home/wakinghours/programming/LiMu-DeepLearning/kaggle/cifar10_version2/logs/epoch98_testacc 0.0_loss0.0046_acc0.9.pth"
     )
 
 
 if __name__ == "__main__":
-    train_val_with_cos()
+    # train_val_with_cos()
+
     # test_ema_with_cos()
-    # test_submission()
+
+
+    test_submission()
+# 
