@@ -13,8 +13,6 @@ import pandas as pd
 import random
 from torch.utils.tensorboard import SummaryWriter
 
-writer = SummaryWriter("./events")
-
 
 os.chdir(sys.path[0])
 join = os.path.join
@@ -38,22 +36,21 @@ class Accumulator():
     def __getitem__(self, idx):
         return self.data[idx]
 
-def manage_logs_dir(root_dir:str = "./runs") -> str:
+
+def manage_logs_dir(root_dir: str = "./runs") -> str:
     if not os.path.exists(root_dir):
         os.mkdir(root_dir)
     dir_list = os.listdir(root_dir)
-    if  len(dir_list) == 0:
-        os.mkdir(join(root_dir, "exp"))
-        
+    if len(dir_list) == 0:
+        os.mkdir(join(root_dir, "exp1"))
+        return join(root_dir, "exp1")
+
     dir_list.sort()
-    last_exp_dir = join(root_dir, "exp"+str(int(dir_list[-1][3: ])+1))
+    last_exp_dir = join(root_dir, "exp" + str(int(dir_list[-1][3:]) + 1))
     os.mkdir(last_exp_dir)
-    
+
     return last_exp_dir
-    
-    
-    
-    
+
 
 def test_to_submission(net: nn.Module, load_path: str = None, devices=try_all_gpus()):
     net = nn.DataParallel(net, devices).to(devices[0])  # 如果训练时, 我们使用了DataParallel, 那么在测试时, 我们也一定要使用.
@@ -163,6 +160,9 @@ def train_cos_ema(
     devices=try_all_gpus(),
 ):
     assert save_mode in ("epoch", "best"), "[ERROR]: save_mode must be is epoch or best"
+    save_path = manage_logs_dir()
+    print("logs will save in: ", save_path)
+    writer = SummaryWriter(join(save_path, "events"))
 
     eps = 0.35
     net = nn.DataParallel(net, devices).to(devices[0])
@@ -224,13 +224,18 @@ def train_cos_ema(
                 try:
                     torch.save(
                         net.state_dict(),
-                        f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                        join(save_path,
+                             "weights",
+                             f"epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth"))
                 except BaseException as e:
                     print(e)
-                    os.mkdir("./logs")
+                    os.mkdir(join(save_path, "weights"))
+
                     torch.save(
                         net.state_dict(),
-                        f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                        join(save_path,
+                             "weights",
+                             f"epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth"))
             elif save_mode == "best":
                 if best_test_accuracy < test_accuracy:
                     best_test_accuracy = test_accuracy  # update current.
@@ -238,20 +243,26 @@ def train_cos_ema(
                     try:
                         torch.save(
                             net.state_dict(),
-                            f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                            join(save_path,
+                                 "weights",
+                                 f"epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                        )
                     except BaseException as e:
-                        os.mkdir("./logs")
+                        os.mkdir(join(save_path, "weights"))
                         torch.save(
                             net.state_dict(),
-                            f"./logs/epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
-
+                            join(
+                                save_path,
+                                "weights",
+                                f"epoch{epoch+1}_testacc{test_accuracy:4.3}_loss{metric[0]/metric[-1]:3.2}_acc{metric[1]/metric[-1]:.2}.pth")
+                        )
         # Tensorboard: writer.
         writer.add_scalars("train",
                            {
                                "train_loss": metric[0] / metric[-1],
                                "train_acc": metric[1] / metric[-1],
                                "test_acc": test_accuracy
-                           }, 
+                           },
                            epoch)
 
 
