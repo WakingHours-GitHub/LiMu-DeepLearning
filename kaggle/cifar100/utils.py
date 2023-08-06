@@ -44,10 +44,15 @@ def manage_logs_dir(root_dir: str = "./runs") -> str:
     if len(dir_list) == 0:
         os.mkdir(join(root_dir, "exp1"))
         return join(root_dir, "exp1")
-
-    dir_list.sort()
-    last_exp_dir = join(root_dir, "exp" + str(int(dir_list[-1][3:]) + 1))
+    
+    
+    last_exp_dir = join(root_dir, "exp" + str(max({int(dir.replace("exp", "")) for dir in dir_list}) + 1))
     os.mkdir(last_exp_dir)
+    
+    # 2023.8.6 imporoved, find a bug in following code, has expire.
+    # dir_list.sort()
+    # last_exp_dir = join(root_dir, "exp" + str(int(dir_list[-1][3:]) + 1))
+    # os.mkdir(last_exp_dir)
 
     return last_exp_dir
 
@@ -159,7 +164,7 @@ def train_cos_ema(
     load_path: str = None, save_mode: str = "epoch", test_epoch: int = 10,
     devices=try_all_gpus(),
 ):
-    assert save_mode in ("epoch", "best"), "[ERROR]: save_mode must be is epoch or best"
+    
     save_path = manage_logs_dir()
     print("logs will save in: ", save_path)
     writer = SummaryWriter(join(save_path, "events"))
@@ -199,6 +204,7 @@ def train_cos_ema(
         metric.reset()  # 重置
         # train a epoch.
         for i, (x, labels) in enumerate(train_iter):
+            # x = seq(images=x)
             x, labels = x.to(devices[0]), labels.to(devices[0])
             y_hat = net(x)
             loss = loss_fn(y_hat, labels)
