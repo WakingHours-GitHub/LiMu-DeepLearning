@@ -93,15 +93,15 @@ cifar10_val_datasets = torchvision.datasets.CIFAR100(
     "~/torch_datasets", train=False, download=False, transform=val_transforme)
 
 
-lr = 0.004
+lr = 0.1
 batch_size = 128
 num_epoch = 200
 
 
 def train_val_with_cos() -> None:
     # gen_cifar10_train_val_text("cifar_data")
-    train_iter = DataLoader(cifar10_train_datasets, batch_size, True, num_workers=20)
-    val_iter = DataLoader(cifar10_val_datasets, batch_size, False, num_workers=20)
+    train_iter = DataLoader(cifar10_train_datasets, batch_size, True, num_workers=25)
+    val_iter = DataLoader(cifar10_val_datasets, batch_size, False, num_workers=25)
     
 
     net = efficientnet_b0(100)
@@ -110,7 +110,7 @@ def train_val_with_cos() -> None:
         train_iter, val_iter,
         lr, num_epoch,
         save_mode="best", test_epoch=1,
-        # load_path="/home/wakinghours/programming/LiMu-DeepLearning/kaggle/cifar10_version2/logs/epoch38_testacc0.874_loss0.006_acc0.87.pth"
+        load_path="/home/wakinghours/programming/LiMu-DeepLearning/kaggle/cifar100/runs/exp5/weights/epoch4_testacc0.0512_loss0.035_acc0.032.pth"
     )
 
 
