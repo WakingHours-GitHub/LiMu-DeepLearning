@@ -106,7 +106,7 @@ def train_val_with_cos() -> None:
 
     net = efficientnet_b0(100)
     train_cos_ema(
-        net, nn.CrossEntropyLoss(),
+        net, nn.CrossEntropyLoss(), 
         train_iter, val_iter,
         lr, num_epoch,
         save_mode="best", test_epoch=1,
