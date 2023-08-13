@@ -22,6 +22,13 @@ def try_all_gpus() -> List[torch.device]:
     devices = [torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())]
     return devices if devices else torch.device("cpu")
 
+def try_indexs_gpus(indexs:List[int]) -> List[torch.device]:
+    devices = [torch.device(f"cuda:{i}") for i in indexs]
+    return devices if devices else torch.device("cpu")
+    
+
+    
+    
 
 class Accumulator():
     def __init__(self, n) -> None:

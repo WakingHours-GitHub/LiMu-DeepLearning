@@ -73,7 +73,7 @@ train_transforme = transforms.Compose([
     transforms.RandomResizedCrop(img_size, scale=(0.60, 1.0), ratio=(1.0, 1.0), antialias=True),
     transforms.RandomHorizontalFlip(),
     transforms.ColorJitter(brightness=0.5, contrast=0.5, hue=0.5),
-    iaa_transform(),
+    # iaa_transform(),
 
     transforms.Normalize([0.4914, 0.4822, 0.4465],  # normalize. 归一化.
                          [0.2023, 0.1994, 0.2010])
@@ -87,14 +87,14 @@ val_transforme = transforms.Compose([
 
 ])
 
-cifar10_train_datasets = torchvision.datasets.CIFAR100(
-    "~/torch_datasets", train=True, download=False, transform=train_transforme)
-cifar10_val_datasets = torchvision.datasets.CIFAR100(
-    "~/torch_datasets", train=False, download=False, transform=val_transforme)
+cifar10_train_datasets = torchvision.datasets.CIFAR10(
+    "~/data/torch_datasets", train=True, download=True, transform=train_transforme)
+cifar10_val_datasets = torchvision.datasets.CIFAR10(
+    "~/data/torch_datasets", train=False, download=True, transform=val_transforme)
 
 
-lr = 0.1
-batch_size = 128
+lr = 0.054
+batch_size = 256
 num_epoch = 200
 
 
@@ -104,13 +104,14 @@ def train_val_with_cos() -> None:
     val_iter = DataLoader(cifar10_val_datasets, batch_size, False, num_workers=25)
     
 
-    net = efficientnet_b0(100)
+    net = efficientnet_b0(10)
     train_cos_ema(
         net, nn.CrossEntropyLoss(), 
         train_iter, val_iter,
         lr, num_epoch,
         save_mode="best", test_epoch=1,
-        load_path="/home/wakinghours/programming/LiMu-DeepLearning/kaggle/cifar100/runs/exp5/weights/epoch4_testacc0.0512_loss0.035_acc0.032.pth"
+        # load_path="/home/wakinghours/programming/LiMu-DeepLearning/kaggle/cifar100/runs/exp5/weights/epoch4_testacc0.0512_loss0.035_acc0.032.pth"
+        devices=try_indexs_gpus([4, 5, 6, 7])
     )
 
 
