@@ -1,0 +1,6 @@
+nohup: ignoring input
+Files already downloaded and verified
+Files already downloaded and verified
+train on: [device(type='cuda', index=4), device(type='cuda', index=5), device(type='cuda', index=6), device(type='cuda', index=7)]
+10 test acc: 0.010024126851931214 train loss: 4.615058533999385 train acc: 0.009168678633298497
+20 test acc: 0.00985179228009656 train loss: 4.614008995951439 train acc: 0.009468575378841892

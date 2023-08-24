@@ -11,9 +11,9 @@ import random
 import math
 from torch.nn import functional as F
 
-def try_all_GPUS(idx=None) -> List[torch.device]:
+def try_all_GPUS(idx=[4,5,6,7]) -> List[torch.device]:
     devices = []
-    devices.extend([torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())])
+    devices.extend([torch.device(f"cuda:{i}") for i in (range(torch.cuda.device_count())if not idx else idx) ])
     return devices if devices else "cpu"
 
 def accuracy(y_hat:torch.Tensor, label:torch.Tensor):

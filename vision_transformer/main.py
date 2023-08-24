@@ -10,14 +10,18 @@ import torchvision
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 
-
+# os.environ["all_proxy"] = "http://172.31.179.129:15732"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "3, 4, 5, 6"
+torch.cuda.device_count()
 os.chdir(sys.path[0])
+
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 # devices = try_all_GPUS() 
 # print(devices)
 
-BATCH_SIZE = 1024
+BATCH_SIZE = 512
 LR = 1e-2
 EPOCH = 500
 
@@ -42,13 +46,34 @@ def main() -> None:
     # test_iter = DataLoader(test_datasets, BATCH_SIZE, True)
 
 
-    train_iter, test_iter = load_CIFAR10_iter(BATCH_SIZE)
+    # train_iter, test_iter = load_CIFAR10_iter(BATCH_SIZE)
+    transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.RandomHorizontalFlip(),
+                transforms.ColorJitter(brightness=0.5, contrast=0.5, hue=0.5),
+                transforms.Normalize([0.4914, 0.4822, 0.4465],  # normalize. 归一化.
+                                     [0.2023, 0.1994, 0.2010])
+            ])
+    val_transform = transforms.Compose([
+                transforms.ToTensor(),
+
+                transforms.Normalize([0.4914, 0.4822, 0.4465],  # normalize. 归一化.
+                                     [0.2023, 0.1994, 0.2010])
+            ])
+    train_datasets = torchvision.datasets.CIFAR100("/data/fanweijia/data/torchvision_datasets", True,transform, download=True)
+    val_datasets = torchvision.datasets.CIFAR100("/data/fanweijia/data/torchvision_datasets", False,val_transform, download=True)
+    train_iter = DataLoader(
+        train_datasets, BATCH_SIZE, True, num_workers=10
+    )
+    test_iter = DataLoader(
+        val_datasets, BATCH_SIZE, True, num_workers=10
+    )
     # print(iter(train_iter).__next__())
     # f, l = iter(train_iter).__next__()
 
 
 
-    net = ViT(32, 8, 512, 10, nhead=4, num_layers=4)
+    net = ViT(32, 8, 768, 100, nhead=16, num_layers=8)
     # output = net(f)
     # output = nn.Softmax()(output)
     # print(output.argmax(dim=1), l)

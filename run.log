@@ -1,1 +1,2 @@
-[1]+ pip install d2l-0.17.6-py3-none-any.whl &
+nohup: ignoring input
+python3: can't open file '/data/fanweijia/programes/LiMu-DeepLearning/main.py': [Errno 2] No such file or directory
